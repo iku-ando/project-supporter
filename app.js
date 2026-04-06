@@ -1932,23 +1932,44 @@ ${memberList}
   ]
 }`;
 
-  // 90秒タイムアウト
-  const controller = new AbortController();
-  const timeoutId  = setTimeout(() => controller.abort(), 90000);
-
   try {
     const res = await fetch('/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal,
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 4000,
+        max_tokens: 8000,
         system: 'あなたはプロジェクト管理の専門家です。指示されたJSON形式のみを出力し、前後に説明文・コードブロック記号（```）を一切付けないでください。',
         messages: [{ role: 'user', content: prompt }]
       })
     });
-    clearTimeout(timeoutId);
+
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+
+    // ストリーミング読み取り
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText = '';
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // 未完了行をバッファに残す
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') break;
+        try {
+          const event = JSON.parse(data);
+          if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+            fullText += event.delta.text;
+          }
+        } catch { /* 不完全なJSONはスキップ */ }
+      }
+    }
 
     clearInterval(stepTimer);
     clearInterval(elapsedTimer);
@@ -1958,9 +1979,7 @@ ${memberList}
     });
     overlay.classList.remove('show');
 
-    if (!res.ok) throw new Error(`API error: ${res.status}`);
-    const data = await res.json();
-    const text = data.content?.[0]?.text || '';
+    const text = fullText;
 
     // JSONを抽出してパース
     const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -2036,7 +2055,6 @@ ${memberList}
     showPanel(2);
 
   } catch (err) {
-    clearTimeout(timeoutId);
     finishLoading(true);
     console.warn('AI生成失敗、フォールバック使用:', err);
     useFallbackData();
