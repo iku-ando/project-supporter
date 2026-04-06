@@ -12,6 +12,7 @@
   --accent2: #2a2a2a;
   --accent-glow: rgba(0,0,0,0.07);
   --accent-fg: #ffffff;
+  --nothing-red: #ff2d2d;
   --green: #10b981;
   --amber: #f59e0b;
   --coral: #ef4444;
@@ -84,7 +85,7 @@ body {
   letter-spacing: -0.5px;
   color: var(--text);
 }
-.logo-mark span { color: var(--text3); }
+.logo-mark span { color: var(--nothing-red); }
 .logo-sub {
   font-size: 10px;
   font-family: 'DM Mono', monospace;
@@ -120,7 +121,7 @@ body {
   border-color: rgba(255,255,255,0.28);
   color: #fff;
 }
-.nav-step.done { color: var(--green); }
+.nav-step.done { color: var(--text2); }
 
 .step-num {
   width: 24px; height: 24px;
@@ -138,8 +139,8 @@ body {
   color: #fff;
 }
 .nav-step.done .step-num {
-  background: var(--green);
-  border-color: var(--green);
+  background: var(--nothing-red);
+  border-color: var(--nothing-red);
   color: #fff;
 }
 
@@ -148,6 +149,8 @@ body {
   flex: 1;
   padding: 40px 0 32px 80px;
   max-width: 100%;
+  background: #f8f8f9;
+  min-height: 100vh;
 }
 /* Step1はpaddingを戻す */
 #panel-1 { padding-right: 80px; }
@@ -205,8 +208,9 @@ body {
   font-size: 10px;
   letter-spacing: 2px;
   text-transform: uppercase;
-  color: var(--text3);
+  color: var(--nothing-red);
   margin-bottom: 8px;
+  opacity: 0.8;
 }
 .page-title {
   font-family: 'Syne', sans-serif;
@@ -249,6 +253,14 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.section-title::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--nothing-red);
+  flex-shrink: 0;
 }
 .section-title::after {
   content: '';
@@ -441,7 +453,7 @@ body {
   gap: 8px;
   box-shadow: 0 2px 12px rgba(0,0,0,0.18);
 }
-.btn-primary:hover { background: #222; box-shadow: 0 4px 18px rgba(0,0,0,0.28); transform: translateY(-1px); }
+.btn-primary:hover { background: var(--nothing-red); box-shadow: 0 4px 18px rgba(255,45,45,0.28); transform: translateY(-1px); }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
 
 .btn-secondary {
@@ -595,10 +607,11 @@ body {
 .stat-val {
   font-family: 'Syne', sans-serif;
   font-weight: 700;
-  font-size: 28px;
+  font-size: 32px;
   color: var(--text);
   line-height: 1;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
+  letter-spacing: -1px;
 }
 .stat-label {
   font-family: 'DM Mono', monospace;
@@ -666,6 +679,7 @@ body {
 .member-col {
   background: var(--bg2);
   border: none;
+  border-top: 2px solid var(--nothing-red);
   border-radius: var(--r);
   overflow: hidden;
   transition: opacity .2s;
@@ -1379,11 +1393,11 @@ body {
   background: transparent;
   border: none;
   outline: none;
-  font-family: 'DM Mono', monospace;
-  font-size: 10px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  color: var(--text3);
+  font-family: 'Syne', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  color: var(--text2);
   white-space: nowrap;
   flex-shrink: 0;
   min-width: 60px;

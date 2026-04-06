@@ -3593,7 +3593,7 @@ function assignScheduleDates() {
 function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, COL_W, ROW_H, phaseColor, phase, gtLeftBody, gtRightBody, container) {
   const MAX_DEPTH = 2;
   const indent = depth * 14;
-  const bgAlpha = depth === 1 ? 'var(--bg3)' : '#ede8df';
+  const bgAlpha = depth === 1 ? 'var(--bg3)' : '#dcdcde';
   const barAlpha = depth === 1 ? 'cc' : 'ff';
   const rowH = ROW_H - depth * 4;
   const tooltip = container.querySelector('#gt-tooltip');
@@ -6251,7 +6251,7 @@ function renderMemberBoard() {
     const addBtn = document.createElement('button');
     addBtn.style.cssText = `background:transparent;border:1px dashed var(--border2);border-radius:var(--r2);padding:8px 12px;color:var(--text3);font-family:'DM Sans',sans-serif;font-size:12px;cursor:pointer;width:calc(100% - 24px);margin:0 12px 12px;transition:all .15s;text-align:center;`;
     addBtn.textContent = '＋ タスクを追加';
-    addBtn.addEventListener('mouseenter', () => { addBtn.style.borderColor='var(--accent)'; addBtn.style.color='var(--accent)'; });
+    addBtn.addEventListener('mouseenter', () => { addBtn.style.borderColor='var(--nothing-red)'; addBtn.style.color='var(--nothing-red)'; });
     addBtn.addEventListener('mouseleave', () => { addBtn.style.borderColor='var(--border2)'; addBtn.style.color='var(--text3)'; });
     addBtn.addEventListener('click', () => {
       d.members[mi].tasks.push({ name:'新しいタスク', phase:'実装', days:3, priority:'todo', description:'', startDate:null, endDate:null, children:[] });
@@ -6502,7 +6502,7 @@ function makeMemberTaskItem(mi, ti, depth, parentPath) {
   // スケジュール外タスクはコンパクト表示
   if (excluded) {
     const compactCard = document.createElement('div');
-    compactCard.style.cssText = `display:flex;align-items:center;gap:6px;padding:5px 28px 5px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg3);position:relative;`;
+    compactCard.style.cssText = `display:flex;align-items:center;gap:6px;padding:5px 60px 5px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg3);position:relative;`;
 
     const nameText = document.createElement('span');
     nameText.contentEditable = 'true';
@@ -6515,10 +6515,25 @@ function makeMemberTaskItem(mi, ti, depth, parentPath) {
     const restoreBtn = document.createElement('button');
     restoreBtn.type = 'button';
     restoreBtn.title = 'スケジュールに戻す';
-    restoreBtn.style.cssText = `position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px;padding:1px 3px;opacity:0;transition:opacity .15s;`;
+    restoreBtn.style.cssText = `position:absolute;right:26px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px;padding:1px 3px;opacity:0;transition:opacity .15s;`;
     restoreBtn.textContent = '↩';
-    compactCard.addEventListener('mouseenter', () => { restoreBtn.style.opacity='1'; });
-    compactCard.addEventListener('mouseleave', () => { restoreBtn.style.opacity='0'; });
+
+    // 削除ボタン
+    const scopeDelBtn = document.createElement('button');
+    scopeDelBtn.type = 'button';
+    scopeDelBtn.title = 'タスクを削除';
+    scopeDelBtn.style.cssText = `position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;padding:1px 4px;opacity:0;transition:color .15s, opacity .15s;`;
+    scopeDelBtn.textContent = '×';
+    scopeDelBtn.addEventListener('mouseenter', () => scopeDelBtn.style.color='#dc2626');
+    scopeDelBtn.addEventListener('mouseleave', () => scopeDelBtn.style.color='var(--text3)');
+    scopeDelBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      removeTaskByPath(mi, path);
+      syncMemberUI();
+    });
+
+    compactCard.addEventListener('mouseenter', () => { restoreBtn.style.opacity='1'; scopeDelBtn.style.opacity='1'; });
+    compactCard.addEventListener('mouseleave', () => { restoreBtn.style.opacity='0'; scopeDelBtn.style.opacity='0'; });
     restoreBtn.addEventListener('click', e => {
       e.stopPropagation();
       getTaskByPath(mi, path).excludeFromSchedule = false;
@@ -6527,6 +6542,7 @@ function makeMemberTaskItem(mi, ti, depth, parentPath) {
 
     compactCard.appendChild(nameText);
     compactCard.appendChild(restoreBtn);
+    compactCard.appendChild(scopeDelBtn);
     item.appendChild(compactCard);
     return item;
   }
