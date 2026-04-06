@@ -349,6 +349,161 @@ async function deleteFromSupabase(snapId) {
   }
 }
 
+// ─── 共有URL機能 ───
+
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
+async function saveSharedProject(token, snap) {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/projects`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Prefer': 'resolution=merge-duplicates'
+      },
+      body: JSON.stringify({
+        user_key: 'share_' + token,
+        snap_id: 'shared',
+        project_name: snap.data?.projectName || '無題',
+        data: snap,
+        saved_at: new Date().toISOString()
+      })
+    });
+    return res.ok;
+  } catch (e) {
+    console.warn('共有保存失敗:', e);
+    return false;
+  }
+}
+
+async function loadSharedProject(token) {
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/projects?user_key=eq.share_${token}&limit=1`,
+      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } }
+    );
+    if (!res.ok) return null;
+    const rows = await res.json();
+    return rows.length ? rows[0].data : null;
+  } catch (e) {
+    console.warn('共有読み込み失敗:', e);
+    return null;
+  }
+}
+
+async function issueShareUrl() {
+  if (!generatedData) return;
+  document.getElementById('proj-settings-popup').style.display = 'none';
+
+  const modal   = document.getElementById('share-url-modal');
+  const content = document.getElementById('share-url-content');
+  modal.style.display = 'flex';
+
+  // ローディング表示
+  content.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;color:var(--text2);font-family:'DM Sans',sans-serif;font-size:13px;padding:4px 0;">
+      <svg style="animation:spin .8s linear infinite;flex-shrink:0;" width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path d="M8 2a6 6 0 0 1 6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      URLを生成中...
+    </div>`;
+
+  // 既存トークン再利用 or 新規生成
+  if (!generatedData.shareToken) generatedData.shareToken = generateUUID();
+  const token = generatedData.shareToken;
+
+  const snap = {
+    id: token,
+    savedAt: new Date().toISOString(),
+    data: generatedData,
+    recurring: recurringList,
+    categories: selectedCategories
+  };
+  const ok = await saveSharedProject(token, snap);
+  const shareUrl = `${location.origin}${location.pathname}?share=${token}`;
+
+  if (ok) {
+    content.innerHTML = `
+      <div style="margin-bottom:14px;">
+        <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:7px;">共有URL</div>
+        <div style="display:flex;gap:6px;">
+          <input id="share-url-input" value="${shareUrl}" readonly
+            style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:8px 10px;font-family:'DM Mono',monospace;font-size:11px;color:var(--text2);outline:none;cursor:text;"
+            onclick="this.select()">
+          <button id="share-copy-btn" onclick="copyShareUrl()"
+            style="flex-shrink:0;background:var(--accent);color:#fff;border:none;border-radius:7px;padding:8px 16px;font-family:'Syne',sans-serif;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .15s;"
+            onmouseover="this.style.background='var(--accent2)'" onmouseout="this.style.background='var(--accent)'">コピー</button>
+        </div>
+      </div>
+      <div style="font-family:'DM Sans',sans-serif;font-size:12px;color:var(--text3);line-height:1.7;margin-bottom:16px;">
+        このURLを知っているメンバーがアクセスできます。プロジェクトのスナップショットが共有されます。
+      </div>
+      <button onclick="issueShareUrl()"
+        style="display:flex;align-items:center;justify-content:center;gap:7px;width:100%;padding:9px 12px;background:transparent;border:1px solid var(--border2);border-radius:7px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:12px;color:var(--text2);transition:background .15s;box-sizing:border-box;"
+        onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='transparent'">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M2 8a6 6 0 1 0 1.5-3.9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M2 4v4h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        現在の状態でURLを更新する
+      </button>`;
+  } else {
+    content.innerHTML = `
+      <div style="color:#dc2626;font-family:'DM Sans',sans-serif;font-size:13px;padding:4px 0;">
+        URLの生成に失敗しました。しばらくしてから再試行してください。
+      </div>`;
+  }
+}
+
+function copyShareUrl() {
+  const input = document.getElementById('share-url-input');
+  const btn   = document.getElementById('share-copy-btn');
+  if (!input || !btn) return;
+  navigator.clipboard.writeText(input.value).then(() => {
+    btn.textContent = 'コピー済み ✓';
+    btn.style.background = '#10b981';
+    setTimeout(() => { btn.textContent = 'コピー'; btn.style.background = 'var(--accent)'; }, 2000);
+  }).catch(() => {
+    input.select(); document.execCommand('copy');
+    btn.textContent = 'コピー済み ✓';
+    btn.style.background = '#10b981';
+    setTimeout(() => { btn.textContent = 'コピー'; btn.style.background = 'var(--accent)'; }, 2000);
+  });
+}
+
+async function handleSharedProjectLoad(token) {
+  const snap = await loadSharedProject(token);
+  if (snap && snap.data) {
+    generatedData      = snap.data;
+    recurringList      = snap.recurring  || [];
+    selectedCategories = snap.categories || [];
+    renderResult(true);
+    showPanel(2);
+    // 読み込み完了トースト
+    const el = document.createElement('div');
+    el.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(91,78,245,.92);color:#fff;font-family:\'DM Mono\',monospace;font-size:11px;padding:10px 18px;border-radius:20px;z-index:9999;display:flex;align-items:center;gap:8px;box-shadow:0 4px 16px rgba(0,0,0,.2);';
+    el.innerHTML = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2.5 8l4 4 7-8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>共有リンクからプロジェクトを読み込みました`;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 4000);
+    // URLをきれいにする（?share=... を除去）
+    history.replaceState({}, '', location.pathname);
+  } else {
+    const el = document.createElement('div');
+    el.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:32px 36px;max-width:340px;width:90%;box-shadow:0 24px 64px rgba(0,0,0,.18);z-index:9999;text-align:center;';
+    el.innerHTML = `
+      <div style="font-size:36px;margin-bottom:14px;">🔍</div>
+      <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:15px;color:var(--text);margin-bottom:8px;">リンクが見つかりません</div>
+      <div style="font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text2);margin-bottom:22px;line-height:1.6;">この共有URLは無効か、期限切れの可能性があります。</div>
+      <button onclick="this.parentElement.remove()" style="padding:9px 28px;background:var(--accent);border:none;border-radius:7px;color:#fff;font-family:'Syne',sans-serif;font-size:13px;font-weight:600;cursor:pointer;">閉じる</button>`;
+    document.body.appendChild(el);
+    history.replaceState({}, '', location.pathname);
+  }
+}
+
 function getSnapshots() {
   try { return JSON.parse(localStorage.getItem(SNAP_KEY) || '[]'); } catch { return []; }
 }
@@ -547,6 +702,10 @@ function init() {
   renderDashboard();
   // Supabaseから同期
   syncFromSupabase();
+
+  // 共有URLチェック（?share=token）
+  const shareToken = new URLSearchParams(location.search).get('share');
+  if (shareToken) handleSharedProjectLoad(shareToken);
 }
 
 // ─── MEMBERS ───
