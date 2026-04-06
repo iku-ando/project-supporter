@@ -3264,6 +3264,22 @@ function assignScheduleDates() {
       if (item.endDate > slot.end) item.endDate = slot.end;
       item.days = Math.max(1, daysBetween(item.startDate, item.endDate) + 1);
       cursor = addDays(item.endDate, 1);
+
+      // childrenにも親の期間内で日付を割り振る
+      if (item.children && item.children.length) {
+        const totalChildDays = item.children.reduce((s, c) => s + (c.days || 1), 0);
+        const parentDays = Math.max(1, daysBetween(item.startDate, item.endDate) + 1);
+        let childCursor = item.startDate;
+        item.children.forEach(child => {
+          if (child.startDate && child.endDate) { childCursor = addDays(child.endDate, 1); return; }
+          const childScaled = Math.max(1, Math.round((child.days || 1) / totalChildDays * parentDays));
+          child.startDate = childCursor > item.endDate ? item.endDate : childCursor;
+          child.endDate   = addDays(child.startDate, childScaled - 1);
+          if (child.endDate > item.endDate) child.endDate = item.endDate;
+          child.days = Math.max(1, daysBetween(child.startDate, child.endDate) + 1);
+          childCursor = addDays(child.endDate, 1);
+        });
+      }
     });
   });
 }
