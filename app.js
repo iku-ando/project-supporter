@@ -3525,6 +3525,12 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
     cBar.setAttribute('data-phase',phase);
     cBar.style.cssText=`position:absolute;left:${cOff*COL_W+1}px;top:3px;width:${Math.max(4,cW)}px;height:${rowH-8}px;background:${phaseColor}${barAlpha};border-radius:2px;overflow:visible;cursor:grab;user-select:none;z-index:2;`;
 
+    // 左リサイズハンドル
+    const cResizeLeft = document.createElement('div');
+    cResizeLeft.style.cssText=`position:absolute;left:0;top:0;width:6px;height:100%;cursor:ew-resize;background:rgba(255,255,255,0.2);border-radius:2px 0 0 2px;z-index:3;`;
+    cBar.appendChild(cResizeLeft);
+
+    // 右リサイズハンドル
     const cResize = document.createElement('div');
     cResize.style.cssText=`position:absolute;right:0;top:0;width:6px;height:100%;cursor:ew-resize;background:rgba(255,255,255,0.2);border-radius:0 2px 2px 0;z-index:3;`;
     cBar.appendChild(cResize);
@@ -3537,7 +3543,7 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
 
     // バードラッグ（グリッドスナップ + フェーズ自動更新）
     cBar.addEventListener('mousedown', e=>{
-      if(e.target===cResize) return;
+      if(e.target===cResize||e.target===cResizeLeft) return;
       e.preventDefault(); e.stopPropagation();
       if(tooltip) tooltip.style.display='none';
       cBar.style.cursor='grabbing';
@@ -3588,6 +3594,33 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
       document.addEventListener('mousemove',onMove); document.addEventListener('mouseup',onUp);
     });
 
+    // 左リサイズ
+    cResizeLeft.addEventListener('mousedown', e => {
+      e.preventDefault(); e.stopPropagation();
+      const startX   = e.clientX;
+      const origLeft = parseInt(cBar.style.left);
+      const origW    = parseInt(cBar.style.width);
+      const onMove = ev => {
+        const dx      = ev.clientX - startX;
+        const newLeft = Math.max(0, Math.round((origLeft + dx) / COL_W) * COL_W);
+        const newW    = Math.max(COL_W, origW + (origLeft - newLeft));
+        cBar.style.left  = newLeft + 'px';
+        cBar.style.width = newW + 'px';
+        cBarLabel.style.left = (newLeft + newW + 4) + 'px';
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup',   onUp);
+        child.startDate = addDays(d.startDate, Math.round(parseInt(cBar.style.left) / COL_W));
+        child.days      = Math.max(1, Math.round(parseInt(cBar.style.width) / COL_W));
+        child.endDate   = addDays(child.startDate, child.days - 1);
+        child.phase     = getPhaseForDate(d, child.startDate);
+        renderGantt();
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup',   onUp);
+    });
+
     // ツールチップ
     cBar.addEventListener('mouseenter',e=>{ if(tooltip&&ttName&&ttDates){ ttName.textContent=child.name; ttDates.textContent=`${cEffStart} 〜 ${cEffEnd}（${cDays}日）`; tooltip.style.display='block'; } });
     cBar.addEventListener('mousemove',e=>{ if(tooltip){ tooltip.style.left=(e.clientX+12)+'px'; tooltip.style.top=(e.clientY-10)+'px'; } });
@@ -3609,6 +3642,40 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
 
 
 let currentGanttView = 'member';
+let ganttLabelWidth = 220; // 左カラム幅（ドラッグリサイズで変更）
+
+// ガント左カラムのドラッグリサイズを初期化する
+function attachGanttColResize(container) {
+  const handle  = container.querySelector('#gt-col-resize');
+  const gtLeft  = container.querySelector('#gt-left');
+  if (!handle || !gtLeft) return;
+
+  handle.addEventListener('mouseenter', () => handle.style.background = 'var(--border2)');
+  handle.addEventListener('mouseleave', () => { if (!handle._dragging) handle.style.background = 'transparent'; });
+
+  handle.addEventListener('mousedown', ev => {
+    ev.preventDefault();
+    handle._dragging = true;
+    handle.style.background = 'var(--accent)';
+    const startX = ev.clientX;
+    const startW = gtLeft.offsetWidth;
+
+    const onMove = ev2 => {
+      const newW = Math.max(140, Math.min(480, startW + ev2.clientX - startX));
+      gtLeft.style.width    = newW + 'px';
+      gtLeft.style.minWidth = newW + 'px';
+    };
+    const onUp = () => {
+      handle._dragging = false;
+      handle.style.background = 'transparent';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup',   onUp);
+      ganttLabelWidth = gtLeft.offsetWidth; // 次回レンダリング時に引き継ぐ
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
+  });
+}
 
 function switchGanttView(view) {
   currentGanttView = view;
@@ -3634,7 +3701,7 @@ function renderGanttByPhase() {
 
   const COL_W  = 28;
   const ROW_H  = 36;
-  const LABEL_W = 220;
+  const LABEL_W = ganttLabelWidth;
   const today  = toDateStr(new Date());
   const totalDays = daysBetween(d.startDate, d.endDate) + 1;
 
@@ -3665,7 +3732,7 @@ function renderGanttByPhase() {
       <div id="gt-tt-dates" style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);"></div>
     </div>
     <div style="display:flex;flex:1;min-height:0;overflow:hidden;">
-      <div id="gt-left" style="width:${LABEL_W}px;min-width:${LABEL_W}px;flex-shrink:0;border-right:1px solid var(--border2);display:flex;flex-direction:column;min-height:0;">
+      <div id="gt-left" style="width:${LABEL_W}px;min-width:${LABEL_W}px;flex-shrink:0;display:flex;flex-direction:column;min-height:0;">
         <div id="gt-left-head" style="flex-shrink:0;background:var(--bg2);border-bottom:1px solid var(--border);">
           <div style="height:22px;border-bottom:1px solid var(--border);"></div>
           <div style="height:22px;border-bottom:1px solid var(--border);display:flex;">
@@ -3675,6 +3742,7 @@ function renderGanttByPhase() {
         </div>
         <div id="gt-left-body" style="flex:1;overflow-y:scroll;overflow-x:hidden;scrollbar-width:none;"></div>
       </div>
+      <div id="gt-col-resize" style="width:5px;flex-shrink:0;cursor:col-resize;background:transparent;border-left:1px solid var(--border2);border-right:1px solid var(--border2);transition:background .15s;z-index:15;box-sizing:border-box;" title="ドラッグで幅を変更"></div>
       <div id="gt-right" style="flex:1;min-width:0;overflow:auto;display:flex;flex-direction:column;">
         <div id="gt-right-head" style="flex-shrink:0;background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10;width:${gridW}px;">
           <div style="display:flex;height:22px;border-bottom:1px solid var(--border);">
@@ -3704,6 +3772,9 @@ function renderGanttByPhase() {
     if (syncingScroll) return; syncingScroll = true;
     gtRight.scrollTop = gtLeftBody.scrollTop; syncingScroll = false;
   }, {passive:true});
+
+  // 左カラム幅リサイズ
+  attachGanttColResize(container);
 
   // フェーズごとにタスクを収集
   // d.phases + タスクが実際に持つphase名の両方をカバー
@@ -3945,7 +4016,7 @@ function renderGantt() {
 
   const COL_W = 28;
   const ROW_H = 36;
-  const LABEL_W = 220;
+  const LABEL_W = ganttLabelWidth;
   const today = toDateStr(new Date());
   const totalDays = daysBetween(d.startDate, d.endDate) + 1;
 
@@ -3980,7 +4051,7 @@ function renderGantt() {
     </div>
     <div style="display:flex;flex:1;min-height:0;overflow:hidden;">
       <!-- 左ペイン：ラベル列（固定） -->
-      <div id="gt-left" style="width:${LABEL_W}px;min-width:${LABEL_W}px;flex-shrink:0;border-right:1px solid var(--border2);display:flex;flex-direction:column;min-height:0;">
+      <div id="gt-left" style="width:${LABEL_W}px;min-width:${LABEL_W}px;flex-shrink:0;display:flex;flex-direction:column;min-height:0;">
         <!-- ヘッダー空白 -->
         <div id="gt-left-head" style="flex-shrink:0;background:var(--bg2);border-bottom:1px solid var(--border);">
           <div style="height:22px;border-bottom:1px solid var(--border);"></div><!-- 月行 -->
@@ -3991,6 +4062,7 @@ function renderGantt() {
         <!-- タスクラベル -->
         <div id="gt-left-body" style="flex:1;overflow-y:scroll;overflow-x:hidden;scrollbar-width:none;min-height:0;"></div>
       </div>
+      <div id="gt-col-resize" style="width:5px;flex-shrink:0;cursor:col-resize;background:transparent;border-left:1px solid var(--border2);border-right:1px solid var(--border2);transition:background .15s;z-index:15;box-sizing:border-box;" title="ドラッグで幅を変更"></div>
       <!-- 右ペイン：グリッド（横スクロール） -->
       <div id="gt-right" style="flex:1;overflow-x:auto;overflow-y:scroll;display:flex;flex-direction:column;min-height:0;">
         <!-- グリッドヘッダー -->
@@ -4050,6 +4122,9 @@ function renderGantt() {
     gtRight.scrollTop = gtLeftBody.scrollTop;
     syncingScroll = false;
   }, {passive:true});
+
+  // 左カラム幅リサイズ
+  attachGanttColResize(container);
 
   // ── scheduleItemsをフェーズ別に描画 ──
   initScheduleItems();
