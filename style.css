@@ -37,7 +37,7 @@
 
 body {
   font-family: 'DM Sans', sans-serif;
-  background: #dcdcdc;
+  background: #F3F2F8;
   background-attachment: fixed;
   color: var(--text);
   min-height: 100vh;
@@ -50,7 +50,7 @@ body {
 
 .sidebar {
   width: 248px;
-  background: #f8f8f9;
+  background: #F3F2F8;
   border-right: 1px solid rgba(0,0,0,0.06);
   padding: 32px 0 0;
   display: flex;
@@ -149,7 +149,7 @@ body {
   flex: 1;
   padding: 40px 0 32px 80px;
   max-width: 100%;
-  background: #f8f8f9;
+  background: #F3F2F8;
   min-height: 100vh;
 }
 /* Step1はpaddingを戻す */
@@ -653,6 +653,10 @@ body {
 /* ─── MEMBER BOARD ─── */
 .member-board {
   display: none;
+  background: #E2E6EF;
+  border-radius: var(--r);
+  padding: 16px;
+  margin-right: 0;
 }
 .member-board.active { display: flex; flex-wrap: wrap; }
 
@@ -679,7 +683,6 @@ body {
 .member-col {
   background: var(--bg2);
   border: none;
-  border-top: 2px solid var(--nothing-red);
   border-radius: var(--r);
   overflow: hidden;
   transition: opacity .2s;
