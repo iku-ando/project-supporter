@@ -6539,7 +6539,7 @@ function makeMemberTaskItem(mi, ti, depth, parentPath) {
   // スケジュール外タスクはコンパクト表示
   if (excluded) {
     const compactCard = document.createElement('div');
-    compactCard.style.cssText = `display:flex;align-items:center;gap:6px;padding:5px 60px 5px 12px;border:none;border-radius:6px;background:rgba(255,255,255,0.82);position:relative;`;
+    compactCard.style.cssText = `display:flex;align-items:center;gap:6px;padding:5px 60px 5px 12px;border:none;border-radius:6px;background:rgba(255,255,255,0.42);position:relative;`;
 
     const nameText = document.createElement('span');
     nameText.contentEditable = 'true';
