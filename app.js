@@ -4545,9 +4545,10 @@ function renderGantt() {
 
       // ── アコーディオン折りたたみ（子タスクがある場合のみ） ──
       const hasChildren = item.children && item.children.length > 0;
+      let toggleBtn = null;
       if (hasChildren) {
         if (item._schedCollapsed === undefined) item._schedCollapsed = false;
-        const toggleBtn = document.createElement('button');
+        toggleBtn = document.createElement('button');
         toggleBtn.type = 'button';
         toggleBtn.style.cssText = `background:none;border:none;cursor:pointer;color:var(--text3);font-size:10px;padding:0 3px;flex-shrink:0;transition:transform .2s;line-height:1;width:14px;`;
         toggleBtn.textContent = item._schedCollapsed ? '▶' : '▾';
@@ -4557,10 +4558,13 @@ function renderGantt() {
           item._schedCollapsed = !item._schedCollapsed;
           renderGantt();
         };
-        lRow.insertBefore(toggleBtn, addSubBtn);
       }
 
-      lRow.appendChild(handle); lRow.appendChild(nameEl); lRow.appendChild(addSubBtn); lRow.appendChild(delBtn);
+      lRow.appendChild(handle);
+      if (toggleBtn) lRow.appendChild(toggleBtn);
+      lRow.appendChild(nameEl);
+      lRow.appendChild(addSubBtn);
+      lRow.appendChild(delBtn);
 
       // ── ドラッグ並び替え ──
       handle.addEventListener('mousedown', e => {
