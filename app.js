@@ -736,33 +736,53 @@ function resetScheduleDates() {
   document.getElementById('schedule-reset-overlay').onclick = close;
   document.getElementById('srm-cancel-btn').onclick = close;
 
-  document.getElementById('srm-ai-btn').onclick = () => {
-    close();
-    // generatedDataからDOMフィールドとmembersを復元してからAI生成
+  // DOM・membersを復元してAI生成を呼ぶ共通処理
+  const restoreAndGenerate = () => {
     const d = generatedData;
-    document.getElementById('proj-name').value  = d.projectName  || '';
-    document.getElementById('proj-desc').value  = d.projectDesc  || d.projectName || '';
-    document.getElementById('proj-start').value = d.startDate    || '';
-    document.getElementById('proj-end').value   = d.endDate      || '';
+    document.getElementById('proj-name').value  = d.projectName || '';
+    document.getElementById('proj-desc').value  = d.projectDesc || d.projectName || '';
+    document.getElementById('proj-start').value = d.startDate   || '';
+    document.getElementById('proj-end').value   = d.endDate     || '';
     const clientEl = document.getElementById('proj-client');
     if (clientEl) clientEl.value = d.client || '';
-    // membersを復元（保存済みdefs優先、なければgeneratedData.membersから）
     const defs = d.memberDefs && d.memberDefs.length
       ? d.memberDefs
       : (d.members || []).map(m => ({ name: m.name, role: m.role, rate: 100 }));
     members = [];
     memberIdx = 0;
     defs.forEach(m => addMember(m.name, m.role, m.rate || 100));
+  };
+
+  // スケジュールはそのまま、タスクを引き直す
+  document.getElementById('srm-tasks-only-btn').onclick = () => {
+    close();
+    const savedSchedule = generatedData.scheduleItems
+      ? generatedData.scheduleItems.map(i => ({ id: i.id, startDate: i.startDate, endDate: i.endDate }))
+      : null;
+    restoreAndGenerate();
+    // generateTasks完了後にスケジュール日付を復元するためフラグを持たせる
+    generatedData._keepScheduleDates = savedSchedule;
     generateTasks();
   };
 
+  // スケジュールもタスクも引き直す
+  document.getElementById('srm-ai-btn').onclick = () => {
+    close();
+    restoreAndGenerate();
+    generateTasks();
+  };
+
+  // タスクはそのまま、スケジュールはゼロにする
   document.getElementById('srm-blank-btn').onclick = () => {
     close();
-    generatedData.scheduleItems = [];
-    if (generatedData.members) {
-      generatedData.members.forEach(m => { m.tasks = []; });
+    if (generatedData.scheduleItems) {
+      generatedData.scheduleItems.forEach(item => {
+        item.startDate = null;
+        item.endDate   = null;
+        if (item.children) item.children.forEach(c => { c.startDate = null; c.endDate = null; });
+      });
     }
-    renderResult(true);
+    renderGantt();
   };
 }
 
@@ -1980,6 +2000,21 @@ ${memberList}
       }))
     };
     generatedData.totalTasks = generatedData.members.reduce((s, m) => s + m.tasks.length, 0);
+
+    // 「スケジュールはそのまま、タスクを引き直す」の場合、生成後にスケジュール日付を復元
+    if (generatedData._keepScheduleDates) {
+      const dateMap = {};
+      generatedData._keepScheduleDates.forEach(s => { dateMap[s.id] = s; });
+      if (generatedData.scheduleItems) {
+        generatedData.scheduleItems.forEach(item => {
+          if (dateMap[item.id]) {
+            item.startDate = dateMap[item.id].startDate;
+            item.endDate   = dateMap[item.id].endDate;
+          }
+        });
+      }
+      delete generatedData._keepScheduleDates;
+    }
 
     renderResult();
     showPanel(2);

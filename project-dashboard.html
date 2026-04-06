@@ -65,18 +65,25 @@
     <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:15px;color:var(--text);margin-bottom:6px;">スケジュールを引き直す</div>
     <div style="font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.6;">どちらの方法でスケジュールを引き直しますか？</div>
     <div style="display:flex;flex-direction:column;gap:10px;">
-      <button id="srm-ai-btn" style="display:flex;align-items:flex-start;gap:12px;padding:16px;border:1.5px solid var(--border2);border-radius:10px;background:var(--bg);cursor:pointer;text-align:left;transition:border-color .15s,background .15s;" onmouseover="this.style.borderColor='var(--accent)';this.style.background='var(--bg3)'" onmouseout="this.style.borderColor='var(--border2)';this.style.background='var(--bg)'">
+      <button id="srm-tasks-only-btn" style="display:flex;align-items:flex-start;gap:12px;padding:16px;border:1.5px solid var(--border2);border-radius:10px;background:var(--bg);cursor:pointer;text-align:left;transition:border-color .15s,background .15s;" onmouseover="this.style.borderColor='var(--accent)';this.style.background='var(--bg3)'" onmouseout="this.style.borderColor='var(--border2)';this.style.background='var(--bg)'">
         <span style="font-size:20px;flex-shrink:0;margin-top:1px;">✨</span>
         <span>
-          <span style="display:block;font-family:'Syne',sans-serif;font-weight:600;font-size:13px;color:var(--text);margin-bottom:3px;">タスクも含めスケジュールを引き直す</span>
-          <span style="display:block;font-family:'DM Sans',sans-serif;font-size:12px;color:var(--text2);line-height:1.5;">AIがタスクを再生成し、スケジュール全体を作り直します。現在のタスクはリセットされます。</span>
+          <span style="display:block;font-family:'Syne',sans-serif;font-weight:600;font-size:13px;color:var(--text);margin-bottom:3px;">スケジュールはそのまま、タスクを引き直す</span>
+          <span style="display:block;font-family:'DM Sans',sans-serif;font-size:12px;color:var(--text2);line-height:1.5;">AIがタスクのみ再生成します。スケジュールの日付は保持されます。</span>
+        </span>
+      </button>
+      <button id="srm-ai-btn" style="display:flex;align-items:flex-start;gap:12px;padding:16px;border:1.5px solid var(--border2);border-radius:10px;background:var(--bg);cursor:pointer;text-align:left;transition:border-color .15s,background .15s;" onmouseover="this.style.borderColor='var(--accent)';this.style.background='var(--bg3)'" onmouseout="this.style.borderColor='var(--border2)';this.style.background='var(--bg)'">
+        <span style="font-size:20px;flex-shrink:0;margin-top:1px;">🔄</span>
+        <span>
+          <span style="display:block;font-family:'Syne',sans-serif;font-weight:600;font-size:13px;color:var(--text);margin-bottom:3px;">スケジュールもタスクも引き直す</span>
+          <span style="display:block;font-family:'DM Sans',sans-serif;font-size:12px;color:var(--text2);line-height:1.5;">AIがタスクを再生成し、スケジュール全体を作り直します。</span>
         </span>
       </button>
       <button id="srm-blank-btn" style="display:flex;align-items:flex-start;gap:12px;padding:16px;border:1.5px solid var(--border2);border-radius:10px;background:var(--bg);cursor:pointer;text-align:left;transition:border-color .15s,background .15s;" onmouseover="this.style.borderColor='var(--accent)';this.style.background='var(--bg3)'" onmouseout="this.style.borderColor='var(--border2)';this.style.background='var(--bg)'">
         <span style="font-size:20px;flex-shrink:0;margin-top:1px;">📋</span>
         <span>
-          <span style="display:block;font-family:'Syne',sans-serif;font-weight:600;font-size:13px;color:var(--text);margin-bottom:3px;">タスクはゼロにしてスケジュールを自分で作成する</span>
-          <span style="display:block;font-family:'DM Sans',sans-serif;font-size:12px;color:var(--text2);line-height:1.5;">タスクをすべて削除し、空のスケジュールから手動で作成します。</span>
+          <span style="display:block;font-family:'Syne',sans-serif;font-weight:600;font-size:13px;color:var(--text);margin-bottom:3px;">タスクはそのまま、スケジュールはゼロにする</span>
+          <span style="display:block;font-family:'DM Sans',sans-serif;font-size:12px;color:var(--text2);line-height:1.5;">タスクを保持したまま、スケジュールの日付をすべてクリアします。</span>
         </span>
       </button>
       <button id="srm-cancel-btn" style="padding:9px;border:1px solid var(--border2);border-radius:7px;background:transparent;color:var(--text2);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer;transition:background .15s;margin-top:2px;" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='transparent'">キャンセル</button>
