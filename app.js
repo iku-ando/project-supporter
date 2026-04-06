@@ -483,6 +483,40 @@ function copyShareUrl() {
   });
 }
 
+// ゲストモード時のUI調整（左メニューを共有プロジェクトのみに制限）
+function applyGuestModeUI(projectName) {
+  // 新規プロジェクト / ホームボタンを非表示
+  const railNew  = document.getElementById('rail-new');
+  const railHome = document.getElementById('rail-home');
+  if (railNew)  railNew.style.display  = 'none';
+  if (railHome) railHome.style.display = 'none';
+
+  // サイドバーの新規・ホームナビを非表示
+  const nav1 = document.getElementById('nav-1');
+  if (nav1) nav1.style.display = 'none';
+
+  // プロジェクト一覧を「このプロジェクトのみ」に置き換え
+  renderSnapshotList();
+
+  // proj-rail-panel の「新規プロジェクト」ボタンを非表示
+  const railPanel = document.getElementById('proj-rail-panel');
+  if (railPanel) {
+    const newBtn = railPanel.querySelector('button');
+    if (newBtn) newBtn.style.display = 'none';
+  }
+
+  // 共有中バナーをアイコンレールの下部に追加
+  const iconRail = document.getElementById('icon-rail');
+  if (iconRail && !document.getElementById('guest-badge')) {
+    const badge = document.createElement('div');
+    badge.id = 'guest-badge';
+    badge.title = '共有リンクで閲覧中';
+    badge.style.cssText = 'width:38px;height:38px;border-radius:9px;background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.3);display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:default;';
+    badge.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 2h4v4M10 6l4-4M7 4H3a1 1 0 00-1 1v8a1 1 0 001 1h10a1 1 0 001-1v-4" stroke="#10b981" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    iconRail.insertBefore(badge, iconRail.firstChild.nextSibling);
+  }
+}
+
 async function handleSharedProjectLoad(token) {
   const snap = await loadSharedProject(token);
   if (snap && snap.data) {
@@ -491,6 +525,7 @@ async function handleSharedProjectLoad(token) {
     selectedCategories = snap.categories || [];
     renderResult(true);
     showPanel(2);
+    applyGuestModeUI(generatedData.projectName || '共有プロジェクト');
     // 読み込み完了トースト
     const el = document.createElement('div');
     el.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(91,78,245,.92);color:#fff;font-family:\'DM Mono\',monospace;font-size:11px;padding:10px 18px;border-radius:20px;z-index:9999;display:flex;align-items:center;gap:8px;box-shadow:0 4px 16px rgba(0,0,0,.2);';
@@ -632,6 +667,19 @@ function deleteSnapshot(id, e) {
 function renderSnapshotList() {
   const list = document.getElementById('project-history-list');
   if (!list) return;
+
+  // ゲストモード：現在の共有プロジェクト名のみ表示
+  if (isGuestMode) {
+    const name = generatedData?.projectName || '共有プロジェクト';
+    list.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:var(--accent-glow);">
+        <div style="width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0;"></div>
+        <div style="font-size:13px;font-weight:600;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${name}</div>
+      </div>
+      <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--text3);padding:6px 14px;">共有リンクで閲覧中</div>`;
+    return;
+  }
+
   const snaps = getSnapshots();
   list.innerHTML = '';
 
@@ -706,14 +754,17 @@ function init() {
 
   addMember('', 'PM', 100);
   initCategoryChips();
-  renderSnapshotList();
-  renderDashboard();
-  // Supabaseから同期
-  syncFromSupabase();
 
-  // 共有URLチェック（?share=token）
+  // 共有URLチェック（?share=token）— 先にフラグを立てる
   const shareToken = new URLSearchParams(location.search).get('share');
-  if (shareToken) handleSharedProjectLoad(shareToken);
+  if (shareToken) {
+    isGuestMode = true;
+    handleSharedProjectLoad(shareToken);
+  } else {
+    renderSnapshotList();
+    renderDashboard();
+    syncFromSupabase();
+  }
 }
 
 // ─── MEMBERS ───
@@ -1034,6 +1085,14 @@ function renderDashboard() {
   const grid  = document.getElementById('dashboard-grid');
   const empty = document.getElementById('dashboard-empty');
   if (!grid) return;
+
+  // ゲストモード：ダッシュボードに他プロジェクトを表示しない
+  if (isGuestMode) {
+    grid.style.display = 'none';
+    if (empty) empty.style.display = 'none';
+    return;
+  }
+
   grid.innerHTML = '';
 
   const snaps = getSnapshots();
@@ -3809,7 +3868,8 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
 
 
 let currentGanttView = 'member';
-let ganttLabelWidth = 220; // 左カラム幅（ドラッグリサイズで変更）
+let ganttLabelWidth = 220;
+let isGuestMode = false; // 共有URLからアクセス中は true // 左カラム幅（ドラッグリサイズで変更）
 
 // ガント左カラムのドラッグリサイズを初期化する
 function attachGanttColResize(container) {
@@ -6324,6 +6384,19 @@ function initPalette() {
 function renderProjRailList() {
   const list = document.getElementById('proj-rail-list');
   if (!list) return;
+
+  // ゲストモード：現在の共有プロジェクトのみ表示
+  if (isGuestMode) {
+    const name = generatedData?.projectName || '共有プロジェクト';
+    list.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:7px;background:var(--accent-glow);">
+        <div style="width:6px;height:6px;border-radius:50%;background:var(--accent);flex-shrink:0;"></div>
+        <div style="font-size:12px;font-weight:600;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:'DM Sans',sans-serif;">${name}</div>
+      </div>
+      <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--text3);padding:4px 10px;">共有リンクで閲覧中</div>`;
+    return;
+  }
+
   const snaps = getSnapshots();
   list.innerHTML = '';
 
