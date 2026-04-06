@@ -1871,7 +1871,7 @@ async function generateTasks() {
     `・${m.name || '（名前未設定）'}（${m.role}、稼働率${m.rate}%）`
   ).join('\n');
 
-  const prompt = `あなたは15年以上の経験を持つシニアプロジェクトマネージャーです。以下の情報をもとに、現場で実際に使えるレベルの詳細なプロジェクトスケジュールを生成してください。
+  const prompt = `あなたは15年以上の経験を持つシニアプロジェクトマネージャーです。以下の情報をもとに、カンバン用スコープとガント用スケジュールを生成してください。
 
 ## プロジェクト情報
 - プロジェクト名：${projName}
@@ -1884,18 +1884,18 @@ async function generateTasks() {
 ## メンバー
 ${memberList}
 
-## 生成ルール（厳守）
-1. **タスク名の具体性**：成果物と工程を明示する（例：「トップページワイヤーフレーム作成」）。プロジェクト名・概要の固有名詞を使う
-2. **タスク数**：稼働率100%は4〜6タスク、稼働率50%以下は2〜4タスク
-3. **サブタスク（children）**：各タスクに必ず2〜3件のサブタスクを設定する（例：「調査→ドラフト→レビュー」）
-4. **description**：完了条件を1文で記載する
-5. **days**：親タスクのdaysはサブタスクのdays合計と一致させる
-6. **ロール適合**：メンバーのロールに合ったタスクのみ割り当てる
+## 生成ルール
+### メンバースコープ（kanban用）
+- 各メンバーの担当業務を大項目で3〜5件定義する
+- 概要・プロジェクト名の固有名詞を使う
+- 詳細なサブタスクは不要
 
-## カテゴリ別の重点タスク例
-- Webサイト制作：競合調査・サイトマップ設計・ワイヤーフレーム・デザインカンプ・コーディング・CMS構築・ブラウザテスト・SEO設定・コンテンツ入稿・公開作業
-- 動画制作：企画書作成・絵コンテ制作・ロケハン・撮影・素材整理・粗編集・本編集・音楽選定・MA・カラーグレーディング・納品データ書き出し
-- ブランディング：市場調査・競合分析・ペルソナ設計・コンセプト立案・ネーミング・VI設計・ロゴデザイン・ガイドライン作成・社内展開資料作成
+### スケジュール（gantt用）
+- フェーズごとにプロジェクトの作業をブレイクダウン（メンバーとは独立）
+- 各フェーズに3〜5件の作業を定義する
+- 各作業に必ず2〜3件のサブ作業（children）を設定する
+- 概要・プロジェクト名に合った具体的な作業名にする
+- daysは親作業がサブ作業の合計と一致するよう設定
 
 ## 出力形式（JSONのみ、前後に説明文を付けない）
 {
@@ -1906,20 +1906,26 @@ ${memberList}
       "role": "ロール名",
       "tasks": [
         {
-          "name": "具体的なタスク名（固有名詞・成果物名を含む）",
+          "name": "担当業務の大項目名",
           "phase": "フェーズ名（上記フェーズのいずれか）",
           "days": 数字,
           "priority": "todo",
-          "description": "このタスクで行うこと・完了条件・注意点を2〜3文で記述",
-          "children": [
-            {
-              "name": "サブタスク名（具体的な作業工程）",
-              "phase": "親と同じフェーズ名",
-              "days": 数字,
-              "priority": "todo",
-              "description": "サブタスクの詳細"
-            }
-          ]
+          "description": "業務内容の概要を1文で"
+        }
+      ]
+    }
+  ],
+  "scheduleItems": [
+    {
+      "name": "作業名（プロジェクト固有の具体的な名前）",
+      "phase": "フェーズ名（上記フェーズのいずれか）",
+      "days": 数字,
+      "description": "作業内容の概要",
+      "children": [
+        {
+          "name": "サブ作業名",
+          "phase": "親と同じフェーズ名",
+          "days": 数字
         }
       ]
     }
@@ -1961,16 +1967,6 @@ ${memberList}
     if (!jsonMatch) throw new Error('JSON not found');
     const parsed = JSON.parse(jsonMatch[0]);
 
-    // デバッグ: AIレスポンスのchildren確認
-    console.log('[AI生成] パース結果:', JSON.stringify({
-      memberCount: parsed.members?.length,
-      members: parsed.members?.map(m => ({
-        name: m.name,
-        taskCount: m.tasks?.length,
-        sampleChildren: m.tasks?.[0]?.children?.length ?? '(childrenなし)'
-      }))
-    }, null, 2));
-
     // generatedDataを構築
     generatedData = {
       projectName: parsed.projectName || projName,
@@ -1983,6 +1979,7 @@ ${memberList}
       phases,
       totalDays,
       categories,
+      // カンバン用スコープ（全タスクをスコープとして設定）
       members: parsed.members.map(m => ({
         name: m.name || '',
         role: m.role || 'その他',
@@ -1994,17 +1991,27 @@ ${memberList}
           description: t.description || '',
           startDate: null,
           endDate: null,
-          children: (t.children || []).map(c => ({
-            id: Date.now() + Math.random(),
-            name: c.name || '未設定',
-            phase: c.phase || t.phase || phases[0],
-            days: Math.max(1, parseInt(c.days) || 1),
-            priority: 'todo',
-            description: c.description || '',
-            startDate: null,
-            endDate: null,
-            children: []
-          }))
+          excludeFromSchedule: true,  // カンバンはスコープのみ
+          children: []
+        }))
+      })),
+      // ガント用スケジュール（AIが概要ベースでフェーズ別生成）
+      scheduleItems: (parsed.scheduleItems || []).map(item => ({
+        id: Date.now() + Math.random(),
+        name: item.name || '未設定',
+        phase: item.phase || phases[0],
+        days: Math.max(1, parseInt(item.days) || 3),
+        description: item.description || '',
+        startDate: null,
+        endDate: null,
+        children: (item.children || []).map(c => ({
+          id: Date.now() + Math.random(),
+          name: c.name || '未設定',
+          phase: c.phase || item.phase || phases[0],
+          days: Math.max(1, parseInt(c.days) || 1),
+          startDate: null,
+          endDate: null,
+          children: []
         }))
       }))
     };
@@ -2025,7 +2032,7 @@ ${memberList}
       delete generatedData._keepScheduleDates;
     }
 
-    renderResult();
+    renderResult(true); // scheduleItemsはAIが生成済みのため保持
     showPanel(2);
 
   } catch (err) {
@@ -2122,7 +2129,7 @@ function useFallbackData() {
     return {
       name: m.name || m.role,
       role: m.role,
-      tasks: templates.map(t => ({ ...t })) // ディープコピーで参照を切る
+      tasks: templates.map(t => ({ ...t, excludeFromSchedule: true, children: [] }))
     };
   });
 
@@ -2148,6 +2155,36 @@ function useFallbackData() {
   const taglines = selectedCategories.map(c => CATEGORY_TAGLINES[c]).filter(Boolean);
   const tagline  = taglines.join(' / ') || '';
 
+  // フェーズごとのデフォルトスケジュール項目
+  const fallbackScheduleItems = phases.flatMap(phase => [
+    {
+      id: Date.now() + Math.random(),
+      name: `${phase}：方針確認・準備`,
+      phase,
+      days: 3,
+      description: '',
+      startDate: null,
+      endDate: null,
+      children: [
+        { id: Date.now() + Math.random(), name: '情報収集・整理', phase, days: 1, startDate: null, endDate: null, children: [] },
+        { id: Date.now() + Math.random(), name: '方針確認・承認', phase, days: 2, startDate: null, endDate: null, children: [] },
+      ]
+    },
+    {
+      id: Date.now() + Math.random(),
+      name: `${phase}：制作・実施`,
+      phase,
+      days: 5,
+      description: '',
+      startDate: null,
+      endDate: null,
+      children: [
+        { id: Date.now() + Math.random(), name: 'ドラフト作成', phase, days: 3, startDate: null, endDate: null, children: [] },
+        { id: Date.now() + Math.random(), name: 'レビュー・修正', phase, days: 2, startDate: null, endDate: null, children: [] },
+      ]
+    }
+  ]);
+
   generatedData = {
     projectName: projName,
     tagline,
@@ -2156,10 +2193,11 @@ function useFallbackData() {
     phases,
     totalTasks: memberResults.reduce((s, m) => s + m.tasks.length, 0),
     totalDays: Math.round((new Date(end) - new Date(start)) / 86400000) || 60,
-    members: memberResults
+    members: memberResults,
+    scheduleItems: fallbackScheduleItems
   };
 
-  renderResult();
+  renderResult(true);
   showPanel(2);
 }
 
