@@ -3510,32 +3510,36 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
 
     // 右行・バー
     const rcRow = document.createElement('div');
-    rcRow.style.cssText=`width:${gridW}px;height:${rowH}px;border-bottom:1px solid var(--border);position:relative;background:${bgAlpha};`;
+    rcRow.style.cssText=`width:${gridW}px;height:${rowH}px;border-bottom:1px solid var(--border);position:relative;overflow:hidden;background:${bgAlpha};`;
 
     const cBar = document.createElement('div');
     cBar.setAttribute('data-phase',phase);
-    cBar.style.cssText=`position:absolute;left:${cOff*COL_W+1}px;top:3px;width:${Math.max(4,cW)}px;height:${rowH-8}px;background:${phaseColor}${barAlpha};border-radius:2px;overflow:visible;cursor:grab;user-select:none;`;
+    cBar.style.cssText=`position:absolute;left:${cOff*COL_W+1}px;top:3px;width:${Math.max(4,cW)}px;height:${rowH-8}px;background:${phaseColor}${barAlpha};border-radius:2px;overflow:visible;cursor:grab;user-select:none;z-index:2;`;
 
     const cResize = document.createElement('div');
-    cResize.style.cssText=`position:absolute;right:0;top:0;width:6px;height:100%;cursor:ew-resize;background:rgba(255,255,255,0.2);border-radius:0 2px 2px 0;`;
+    cResize.style.cssText=`position:absolute;right:0;top:0;width:6px;height:100%;cursor:ew-resize;background:rgba(255,255,255,0.2);border-radius:0 2px 2px 0;z-index:3;`;
     cBar.appendChild(cResize);
 
     // バーラベルをバーの右横に配置（rcRow内の絶対位置）
     const cBarLabel = document.createElement('span');
     cBarLabel.id=cBarLabelId;
-    cBarLabel.style.cssText=`position:absolute;left:${cOff*COL_W+1+Math.max(4,cW)+4}px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--text2);white-space:nowrap;pointer-events:none;font-family:'DM Sans',sans-serif;`;
+    cBarLabel.style.cssText=`position:absolute;left:${cOff*COL_W+1+Math.max(4,cW)+4}px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--text2);white-space:nowrap;pointer-events:none;font-family:'DM Sans',sans-serif;z-index:1;`;
     cBarLabel.textContent=child.name;
 
-    // バードラッグ（相対移動 + フェーズ自動更新）
+    // バードラッグ（グリッドスナップ + フェーズ自動更新）
     cBar.addEventListener('mousedown', e=>{
       if(e.target===cResize) return;
-      e.preventDefault(); tooltip.style.display='none'; cBar.style.cursor='grabbing';
-      const startX   = e.clientX;
+      e.preventDefault(); e.stopPropagation();
+      if(tooltip) tooltip.style.display='none';
+      cBar.style.cursor='grabbing';
       const origLeft = parseInt(cBar.style.left);
       const barW     = parseInt(cBar.style.width);
+      // 親バーと同じグリッドスナップ基準（クリック位置を列境界に合わせる）
+      const barRect  = cBar.getBoundingClientRect();
+      const snapBaseX = e.clientX - (e.clientX - barRect.left) % COL_W;
       let lastDelta  = 0;
       const onMove=ev=>{
-        const cd = Math.round((ev.clientX - startX) / COL_W);
+        const cd = Math.round((ev.clientX - snapBaseX) / COL_W);
         lastDelta = cd;
         const newLeft = Math.max(0, origLeft + cd * COL_W);
         cBar.style.left = newLeft + 'px';
@@ -3576,9 +3580,9 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
     });
 
     // ツールチップ
-    cBar.addEventListener('mouseenter',e=>{ ttName.textContent=child.name; ttDates.textContent=`${cEffStart} 〜 ${cEffEnd}（${cDays}日）`; tooltip.style.display='block'; });
-    cBar.addEventListener('mousemove',e=>{ tooltip.style.left=(e.clientX+12)+'px'; tooltip.style.top=(e.clientY-10)+'px'; });
-    cBar.addEventListener('mouseleave',()=>{ tooltip.style.display='none'; });
+    cBar.addEventListener('mouseenter',e=>{ if(tooltip&&ttName&&ttDates){ ttName.textContent=child.name; ttDates.textContent=`${cEffStart} 〜 ${cEffEnd}（${cDays}日）`; tooltip.style.display='block'; } });
+    cBar.addEventListener('mousemove',e=>{ if(tooltip){ tooltip.style.left=(e.clientX+12)+'px'; tooltip.style.top=(e.clientY-10)+'px'; } });
+    cBar.addEventListener('mouseleave',()=>{ if(tooltip) tooltip.style.display='none'; });
 
     rcRow.appendChild(cBar);
     rcRow.appendChild(cBarLabel); // バーの右横にラベル
