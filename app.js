@@ -3374,6 +3374,15 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
   const ttName  = container.querySelector('#gt-tt-name');
   const ttDates = container.querySelector('#gt-tt-dates');
 
+  // startDate が早い順に並び替え（null は末尾）
+  children.sort((a, b) => {
+    const sa = a.startDate || d.startDate;
+    const sb = b.startDate || d.startDate;
+    if (sa < sb) return -1;
+    if (sa > sb) return  1;
+    return 0;
+  });
+
   children.forEach((child, ci) => {
     // 子バーの範囲（孫がある場合は孫の範囲で自動更新）
     let cEffStart = child.startDate || d.startDate;
