@@ -4776,7 +4776,13 @@ function renderGantt() {
     gtLeftBody.appendChild(lAddRow);
 
     const rAddRow = document.createElement('div');
-    rAddRow.style.cssText = `width:${gridW}px;min-height:32px;border-bottom:1px solid var(--border);background:transparent;`;
+    rAddRow.style.cssText = `width:${gridW}px;min-height:32px;border-bottom:1px solid var(--border);position:relative;overflow:hidden;`;
+    dates.forEach((dt,di)=>{
+      const off=isOffDay(dt); const isT=dt===today; const isMStart=dt.endsWith('-01')||dt===d.startDate;
+      const acell=document.createElement('div');
+      acell.style.cssText=`position:absolute;left:${di*COL_W}px;top:0;width:${COL_W}px;height:100%;background:${isT?'rgba(91,78,245,0.04)':off?'rgba(0,0,0,0.025)':'transparent'};border-left:${isMStart?'1px solid var(--border2)':'none'};box-sizing:border-box;`;
+      rAddRow.appendChild(acell);
+    });
     gtRightBody.appendChild(rAddRow);
   });
 
@@ -6533,7 +6539,7 @@ function makeMemberTaskItem(mi, ti, depth, parentPath) {
   // スケジュール外タスクはコンパクト表示
   if (excluded) {
     const compactCard = document.createElement('div');
-    compactCard.style.cssText = `display:flex;align-items:center;gap:6px;padding:5px 60px 5px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg3);position:relative;`;
+    compactCard.style.cssText = `display:flex;align-items:center;gap:6px;padding:5px 60px 5px 12px;border:none;border-radius:6px;background:rgba(255,255,255,0.82);position:relative;`;
 
     const nameText = document.createElement('span');
     nameText.contentEditable = 'true';
