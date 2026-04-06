@@ -3593,7 +3593,7 @@ function assignScheduleDates() {
 function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, COL_W, ROW_H, phaseColor, phase, gtLeftBody, gtRightBody, container) {
   const MAX_DEPTH = 2;
   const indent = depth * 14;
-  const bgAlpha = depth === 1 ? 'var(--bg3)' : '#dcdcde';
+  const bgAlpha = depth === 1 ? 'rgba(243,242,248,0.95)' : 'rgba(226,230,239,0.95)';
   const barAlpha = depth === 1 ? 'cc' : 'ff';
   const rowH = ROW_H - depth * 4;
   const tooltip = container.querySelector('#gt-tooltip');
@@ -3744,21 +3744,31 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
     lcRow.appendChild(cDel);
 
     // 右行・バー
+    const today = toDateStr(new Date());
     const rcRow = document.createElement('div');
-    rcRow.style.cssText=`width:${gridW}px;height:${rowH}px;border-bottom:1px solid var(--border);position:relative;overflow:hidden;background:${bgAlpha};`;
+    rcRow.style.cssText=`width:${gridW}px;height:${rowH}px;border-bottom:1px solid var(--border);position:relative;overflow:hidden;`;
+    dates.forEach((dt,di)=>{
+      const off = isOffDay(dt);
+      const isT  = dt === today;
+      const isMStart = dt.endsWith('-01') || dt === d.startDate;
+      const cellBg = isT ? 'rgba(91,78,245,0.04)' : off ? 'rgba(0,0,0,0.025)' : bgAlpha;
+      const dcell = document.createElement('div');
+      dcell.style.cssText=`position:absolute;left:${di*COL_W}px;top:0;width:${COL_W}px;height:100%;background:${cellBg};border-left:${isMStart?'1px solid var(--border2)':'none'};box-sizing:border-box;`;
+      rcRow.appendChild(dcell);
+    });
 
     const cBar = document.createElement('div');
     cBar.setAttribute('data-phase',phase);
-    cBar.style.cssText=`position:absolute;left:${cOff*COL_W+1}px;top:3px;width:${Math.max(4,cW)}px;height:${rowH-8}px;background:${phaseColor}${barAlpha};border-radius:2px;overflow:visible;cursor:grab;user-select:none;z-index:2;`;
+    cBar.style.cssText=`position:absolute;left:${cOff*COL_W+1}px;top:3px;width:${Math.max(4,cW)}px;height:${rowH-8}px;background:${phaseColor}${barAlpha};border-radius:99px;overflow:visible;cursor:grab;user-select:none;z-index:2;`;
 
     // 左リサイズハンドル
     const cResizeLeft = document.createElement('div');
-    cResizeLeft.style.cssText=`position:absolute;left:0;top:0;width:6px;height:100%;cursor:ew-resize;background:rgba(255,255,255,0.2);border-radius:2px 0 0 2px;z-index:3;`;
+    cResizeLeft.style.cssText=`position:absolute;left:0;top:0;width:6px;height:100%;cursor:ew-resize;background:rgba(255,255,255,0.2);border-radius:99px 0 0 99px;z-index:3;`;
     cBar.appendChild(cResizeLeft);
 
     // 右リサイズハンドル
     const cResize = document.createElement('div');
-    cResize.style.cssText=`position:absolute;right:0;top:0;width:6px;height:100%;cursor:ew-resize;background:rgba(255,255,255,0.2);border-radius:0 2px 2px 0;z-index:3;`;
+    cResize.style.cssText=`position:absolute;right:0;top:0;width:6px;height:100%;cursor:ew-resize;background:rgba(255,255,255,0.2);border-radius:0 99px 99px 0;z-index:3;`;
     cBar.appendChild(cResize);
 
     // バーラベルをバーの右横に配置（rcRow内の絶対位置）
@@ -4533,6 +4543,23 @@ function renderGantt() {
         renderGantt();
       };
 
+      // ── アコーディオン折りたたみ（子タスクがある場合のみ） ──
+      const hasChildren = item.children && item.children.length > 0;
+      if (hasChildren) {
+        if (item._schedCollapsed === undefined) item._schedCollapsed = false;
+        const toggleBtn = document.createElement('button');
+        toggleBtn.type = 'button';
+        toggleBtn.style.cssText = `background:none;border:none;cursor:pointer;color:var(--text3);font-size:10px;padding:0 3px;flex-shrink:0;transition:transform .2s;line-height:1;width:14px;`;
+        toggleBtn.textContent = item._schedCollapsed ? '▶' : '▾';
+        toggleBtn.title = item._schedCollapsed ? 'サブタスクを展開' : 'サブタスクを折りたたむ';
+        toggleBtn.onclick = e => {
+          e.stopPropagation();
+          item._schedCollapsed = !item._schedCollapsed;
+          renderGantt();
+        };
+        lRow.insertBefore(toggleBtn, addSubBtn);
+      }
+
       lRow.appendChild(handle); lRow.appendChild(nameEl); lRow.appendChild(addSubBtn); lRow.appendChild(delBtn);
 
       // ── ドラッグ並び替え ──
@@ -4606,7 +4633,7 @@ function renderGantt() {
 
       const bar = document.createElement('div');
       bar.setAttribute('data-phase',phase);
-      bar.style.cssText=`position:absolute;left:${effectiveOff*COL_W+1}px;top:6px;width:${Math.max(4,effectiveBarW)}px;height:${ROW_H-12}px;background:${phaseColor};border-radius:3px;box-sizing:border-box;overflow:visible;cursor:grab;user-select:none;`;
+      bar.style.cssText=`position:absolute;left:${effectiveOff*COL_W+1}px;top:6px;width:${Math.max(4,effectiveBarW)}px;height:${ROW_H-12}px;background:${phaseColor}dd;border-radius:99px;box-sizing:border-box;overflow:visible;cursor:grab;user-select:none;`;
 
       // バーのテキストはバーの右横に表示
       const barLabel=document.createElement('span');
@@ -4617,7 +4644,7 @@ function renderGantt() {
 
       // リサイズハンドル（左端）
       const resizeHandleLeft = document.createElement('div');
-      resizeHandleLeft.style.cssText=`position:absolute;left:0;top:0;width:10px;height:100%;cursor:ew-resize;background:rgba(255,255,255,0.25);border-radius:3px 0 0 3px;z-index:3;`;
+      resizeHandleLeft.style.cssText=`position:absolute;left:0;top:0;width:10px;height:100%;cursor:ew-resize;background:rgba(255,255,255,0.25);border-radius:99px 0 0 99px;z-index:3;`;
       bar.appendChild(resizeHandleLeft);
       resizeHandleLeft.addEventListener('mousedown', ev => {
         ev.preventDefault(); ev.stopPropagation();
@@ -4727,7 +4754,7 @@ function renderGantt() {
       gtRightBody.appendChild(rRow);
 
       // ── サブタスク行を親の後に追加（再帰で孫まで対応） ──
-      if (item.children && item.children.length) {
+      if (item.children && item.children.length && !item._schedCollapsed) {
         renderScheduleChildren(item.children, item, 1, d, dates, gridW, COL_W, ROW_H, phaseColor, phase, gtLeftBody, gtRightBody, container);
       }
     });
