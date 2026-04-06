@@ -1962,6 +1962,16 @@ ${memberList}
     if (!jsonMatch) throw new Error('JSON not found');
     const parsed = JSON.parse(jsonMatch[0]);
 
+    // デバッグ: AIレスポンスのchildren確認
+    console.log('[AI生成] パース結果:', JSON.stringify({
+      memberCount: parsed.members?.length,
+      members: parsed.members?.map(m => ({
+        name: m.name,
+        taskCount: m.tasks?.length,
+        sampleChildren: m.tasks?.[0]?.children?.length ?? '(childrenなし)'
+      }))
+    }, null, 2));
+
     // generatedDataを構築
     generatedData = {
       projectName: parsed.projectName || projName,
