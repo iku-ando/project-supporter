@@ -3184,7 +3184,16 @@ function initScheduleItems() {
         endDate: t.endDate || null,
         assigneeName: m.name || m.role,
         assigneeMi: mi,
-        kanbanLinked: true // カンバン連携済み
+        kanbanLinked: true,
+        children: (t.children || []).map(c => ({
+          id: Date.now() + Math.random(),
+          name: c.name || '',
+          phase: c.phase || t.phase || (d.phases && d.phases[0]) || '',
+          days: c.days || 1,
+          startDate: c.startDate || null,
+          endDate: c.endDate || null,
+          children: []
+        }))
       });
     });
   });
