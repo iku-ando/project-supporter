@@ -704,7 +704,7 @@ body {
   overflow: hidden;
   transition: opacity .2s, box-shadow .25s, background .25s, transform .25s;
   position: relative;
-  box-shadow: var(--shadow);
+  box-shadow: none;
 }
 .member-col:not(.dragging):hover {
   background: linear-gradient(145deg, rgba(255,255,255,0.72) 0%, rgba(226,230,239,0.88) 100%);
@@ -952,7 +952,7 @@ body {
   border-right: none;
   border-radius: var(--r) 0 0 var(--r);
   overflow: hidden;
-  box-shadow: var(--shadow);
+  box-shadow: none;
 }
 .gantt-toolbar {
   display: flex;
