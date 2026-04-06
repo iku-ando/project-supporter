@@ -359,23 +359,31 @@ function generateUUID() {
 }
 
 async function saveSharedProject(token, snap) {
+  const headers = {
+    'Content-Type': 'application/json',
+    'apikey': SUPABASE_KEY,
+    'Authorization': `Bearer ${SUPABASE_KEY}`
+  };
   try {
+    // 既存レコードを削除してから新規挿入（upsert競合を回避）
+    await fetch(`${SUPABASE_URL}/rest/v1/projects?user_key=eq.share_${token}`, {
+      method: 'DELETE', headers
+    });
     const res = await fetch(`${SUPABASE_URL}/rest/v1/projects`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SUPABASE_KEY,
-        'Authorization': `Bearer ${SUPABASE_KEY}`,
-        'Prefer': 'resolution=merge-duplicates'
-      },
+      headers: { ...headers, 'Prefer': 'return=minimal' },
       body: JSON.stringify({
-        user_key: 'share_' + token,
-        snap_id: 'shared',
+        user_key:     'share_' + token,
+        snap_id:      token,
         project_name: snap.data?.projectName || '無題',
-        data: snap,
-        saved_at: new Date().toISOString()
+        data:         snap,
+        saved_at:     new Date().toISOString()
       })
     });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.warn('共有保存失敗:', res.status, errText);
+    }
     return res.ok;
   } catch (e) {
     console.warn('共有保存失敗:', e);
