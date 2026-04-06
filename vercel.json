@@ -1,5 +1,10 @@
 {
   "rewrites": [
     { "source": "/", "destination": "/project-dashboard.html" }
-  ]
+  ],
+  "functions": {
+    "api/generate.js": {
+      "maxDuration": 60
+    }
+  }
 }

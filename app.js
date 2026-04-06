@@ -1927,9 +1927,9 @@ ${memberList}
   ]
 }`;
 
-  // 30秒タイムアウト
+  // 90秒タイムアウト
   const controller = new AbortController();
-  const timeoutId  = setTimeout(() => controller.abort(), 30000);
+  const timeoutId  = setTimeout(() => controller.abort(), 90000);
 
   try {
     const res = await fetch('/api/generate', {
