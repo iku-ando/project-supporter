@@ -3283,6 +3283,20 @@ function addScheduleItem(phase) {
   renderGantt();
 }
 
+// 日付からフェーズを判定するヘルパー
+function getPhaseForDate(d, dateStr) {
+  const phases = d.phases && d.phases.length ? d.phases : ['企画','制作','確認','納品'];
+  const totalDays = Math.max(1, daysBetween(d.startDate, d.endDate) + 1);
+  const OVERLAP = 0.25;
+  const slotUnit = Math.floor(totalDays / (phases.length - OVERLAP * (phases.length - 1)));
+  for (let i = phases.length - 1; i >= 0; i--) {
+    const startOffset = Math.round(i * slotUnit * (1 - OVERLAP));
+    const slotStart = addDays(d.startDate, Math.min(startOffset, totalDays - 1));
+    if (dateStr >= slotStart) return phases[i];
+  }
+  return phases[0];
+}
+
 // scheduleItemsに日付を割り当て
 function assignScheduleDates() {
   const d = generatedData;
@@ -3500,29 +3514,32 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
 
     const cBar = document.createElement('div');
     cBar.setAttribute('data-phase',phase);
-    cBar.style.cssText=`position:absolute;left:${cOff*COL_W+1}px;top:3px;width:${Math.max(4,cW)}px;height:${rowH-8}px;background:${phaseColor}${barAlpha};border-radius:2px;display:flex;align-items:center;padding:0 4px;overflow:visible;cursor:grab;user-select:none;`;
-
-    const cBarLabel = document.createElement('span');
-    cBarLabel.id=cBarLabelId;
-    cBarLabel.style.cssText=`font-size:11px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;flex:1;`;
-    cBarLabel.textContent=child.name;
-    cBar.appendChild(cBarLabel);
+    cBar.style.cssText=`position:absolute;left:${cOff*COL_W+1}px;top:3px;width:${Math.max(4,cW)}px;height:${rowH-8}px;background:${phaseColor}${barAlpha};border-radius:2px;overflow:visible;cursor:grab;user-select:none;`;
 
     const cResize = document.createElement('div');
     cResize.style.cssText=`position:absolute;right:0;top:0;width:6px;height:100%;cursor:ew-resize;background:rgba(255,255,255,0.2);border-radius:0 2px 2px 0;`;
     cBar.appendChild(cResize);
 
-    // バードラッグ（相対移動）
+    // バーラベルをバーの右横に配置（rcRow内の絶対位置）
+    const cBarLabel = document.createElement('span');
+    cBarLabel.id=cBarLabelId;
+    cBarLabel.style.cssText=`position:absolute;left:${cOff*COL_W+1+Math.max(4,cW)+4}px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--text2);white-space:nowrap;pointer-events:none;font-family:'DM Sans',sans-serif;`;
+    cBarLabel.textContent=child.name;
+
+    // バードラッグ（相対移動 + フェーズ自動更新）
     cBar.addEventListener('mousedown', e=>{
       if(e.target===cResize) return;
       e.preventDefault(); tooltip.style.display='none'; cBar.style.cursor='grabbing';
       const startX   = e.clientX;
       const origLeft = parseInt(cBar.style.left);
+      const barW     = parseInt(cBar.style.width);
       let lastDelta  = 0;
       const onMove=ev=>{
         const cd = Math.round((ev.clientX - startX) / COL_W);
         lastDelta = cd;
-        cBar.style.left = Math.max(0, origLeft + cd * COL_W) + 'px';
+        const newLeft = Math.max(0, origLeft + cd * COL_W);
+        cBar.style.left = newLeft + 'px';
+        cBarLabel.style.left = (newLeft + barW + 4) + 'px';
       };
       const onUp=()=>{
         cBar.style.cursor='grab';
@@ -3533,6 +3550,7 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
         child.startDate = addDays(origStart, lastDelta);
         child.endDate   = addDays(origEnd,   lastDelta);
         child.days = Math.max(1, daysBetween(child.startDate, child.endDate)+1);
+        child.phase = getPhaseForDate(d, child.startDate); // フェーズ自動更新
         renderGantt();
       };
       document.addEventListener('mousemove',onMove); document.addEventListener('mouseup',onUp);
@@ -3541,8 +3559,12 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
     // リサイズ
     cResize.addEventListener('mousedown',e=>{
       e.preventDefault(); e.stopPropagation();
-      const sx=e.clientX, ow=parseInt(cBar.style.width);
-      const onMove=ev=>{ cBar.style.width=Math.max(COL_W,ow+Math.round((ev.clientX-sx)/COL_W)*COL_W)+'px'; };
+      const sx=e.clientX, ow=parseInt(cBar.style.width), ol=parseInt(cBar.style.left);
+      const onMove=ev=>{
+        const newW = Math.max(COL_W, ow+Math.round((ev.clientX-sx)/COL_W)*COL_W);
+        cBar.style.width = newW+'px';
+        cBarLabel.style.left = (ol + newW + 4) + 'px';
+      };
       const onUp=ev=>{
         document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp);
         const cd=Math.round((ev.clientX-sx)/COL_W); if(cd===0) return;
@@ -3559,6 +3581,7 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
     cBar.addEventListener('mouseleave',()=>{ tooltip.style.display='none'; });
 
     rcRow.appendChild(cBar);
+    rcRow.appendChild(cBarLabel); // バーの右横にラベル
 
     // 左右同時追加
     gtLeftBody.appendChild(lcRow);
