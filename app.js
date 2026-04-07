@@ -6276,7 +6276,25 @@ function renderMemberBoard() {
       .filter(t => t.priority !== 'done' && !t.excludeFromSchedule)
       .sort((a, b) => (STATUS_ORDER[a.priority]??1) - (STATUS_ORDER[b.priority]??1));
 
-    // スコープ（excludeFromSchedule）はリストに表示しない
+    if (excl.length > 0) {
+      if (m._scopeCollapsed === undefined) m._scopeCollapsed = false;
+      const scopeItems = [];
+      const scopeLabel = makeSectionLabel('スコープ', false, () => {
+        m._scopeCollapsed = !m._scopeCollapsed;
+        scopeItems.forEach(el => { el.style.display = m._scopeCollapsed ? 'none' : ''; });
+        const chevron = scopeLabel.querySelector('.scope-chevron');
+        if (chevron) chevron.style.transform = m._scopeCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
+      }, m._scopeCollapsed);
+      taskList.appendChild(scopeLabel);
+      excl.forEach(t => {
+        const el = makeMemberTaskItem(mi, m.tasks.indexOf(t), 0, null);
+        el.querySelector('.task-item')?.classList.add(`status-${t.priority||'todo'}`);
+        if (m._scopeCollapsed) el.style.display = 'none';
+        taskList.appendChild(el);
+        scopeItems.push(el);
+      });
+      if (active.length > 0) taskList.appendChild(makeSectionLabel('タスク', true));
+    }
     active.forEach(t => {
       const ti = m.tasks.indexOf(t);
       const el = makeMemberTaskItem(mi, ti, 0, null);
