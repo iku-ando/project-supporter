@@ -1690,6 +1690,58 @@ function renderWiki() {
     list.appendChild(makeWikiBlock(block, i));
   });
   body.appendChild(list);
+
+  // ── グリップDnD ──
+  let _wikiDrag = null;
+  let _wikiPlaceholder = null;
+  list.querySelectorAll('.wiki-grip').forEach(grip => {
+    grip.addEventListener('mousedown', e => {
+      e.preventDefault();
+      const wrap = grip.closest('.wiki-block');
+      if (!wrap) return;
+      _wikiDrag = wrap;
+      const rect = wrap.getBoundingClientRect();
+      wrap.style.opacity = '0.4';
+      wrap.style.pointerEvents = 'none';
+      _wikiPlaceholder = document.createElement('div');
+      _wikiPlaceholder.style.cssText = `height:${rect.height}px;border-radius:var(--r2);background:rgba(243,242,248,0.6);border:2px dashed rgba(0,0,0,0.12);transition:height .15s;`;
+      wrap.parentNode.insertBefore(_wikiPlaceholder, wrap);
+
+      const onMove = ev => {
+        const items = [...list.querySelectorAll('.wiki-block:not([style*="opacity: 0.4"])')];
+        let inserted = false;
+        for (const item of items) {
+          const r = item.getBoundingClientRect();
+          if (ev.clientY < r.top + r.height / 2) {
+            list.insertBefore(_wikiPlaceholder, item);
+            inserted = true; break;
+          }
+        }
+        if (!inserted) list.appendChild(_wikiPlaceholder);
+      };
+
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        if (_wikiDrag && _wikiPlaceholder) {
+          list.insertBefore(_wikiDrag, _wikiPlaceholder);
+          _wikiPlaceholder.remove();
+          _wikiDrag.style.opacity = '';
+          _wikiDrag.style.pointerEvents = '';
+          // DOM順でblocks配列を並び替え
+          const newOrder = [...list.querySelectorAll('.wiki-block')].map(el => {
+            const id = parseFloat(el.dataset.id);
+            return getWikiBlocks().find(b => b.id === id);
+          }).filter(Boolean);
+          generatedData.wikiBlocks = newOrder;
+          _wikiDrag = null; _wikiPlaceholder = null;
+          saveSnapshot();
+        }
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
 }
 
 function addWikiBlock(type) {
@@ -1717,6 +1769,16 @@ function makeWikiBlock(block, i) {
   const wrap = document.createElement('div');
   wrap.className = 'wiki-block';
   wrap.dataset.id = block.id;
+
+  // グリップハンドル（ホバーで表示）
+  const grip = document.createElement('div');
+  grip.className = 'wiki-grip';
+  grip.title = 'ドラッグして並び替え';
+  grip.style.cssText = `position:absolute;left:6px;top:50%;transform:translateY(-50%);width:16px;height:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:grab;opacity:0;transition:opacity .15s;z-index:4;`;
+  grip.innerHTML = `<span style="display:block;width:10px;height:1.5px;background:var(--text3);border-radius:1px;"></span><span style="display:block;width:10px;height:1.5px;background:var(--text3);border-radius:1px;"></span><span style="display:block;width:10px;height:1.5px;background:var(--text3);border-radius:1px;"></span>`;
+  wrap.appendChild(grip);
+  wrap.addEventListener('mouseenter', () => grip.style.opacity = '1');
+  wrap.addEventListener('mouseleave', () => grip.style.opacity = '0');
 
   // 削除ボタン（ホバーで表示）
   const del = document.createElement('button');
