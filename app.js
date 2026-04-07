@@ -5765,7 +5765,7 @@ let currentMemberTab = 'kanban';
 
 function switchMemberTab(tab) {
   currentMemberTab = tab;
-  const tabs = ['kanban','status','done'];
+  const tabs = ['kanban','status','list','done'];
   tabs.forEach(t => {
     const btn = document.getElementById(`mtab-${t}`);
     const view = document.getElementById(`subview-${t}`);
@@ -5781,6 +5781,7 @@ function switchMemberTab(tab) {
 
   if (tab === 'done')   renderMemberDoneView();
   if (tab === 'status') renderStatusKanban();
+  if (tab === 'list')   renderMemberListView();
 }
 
 function renderMemberListView() {
