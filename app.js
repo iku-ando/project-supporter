@@ -4331,7 +4331,7 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
 
 
 let currentGanttView = 'member';
-let ganttLabelWidth = 220;
+let ganttLabelWidth = 280;
 let ganttColWidth = 28; // ズーム用カラム幅（デフォルト28px = 100%）
 const GANTT_COL_DEFAULT = 28;
 const GANTT_COL_STEPS = [8, 10, 12, 16, 20, 28, 36, 48]; // ズームステップ
