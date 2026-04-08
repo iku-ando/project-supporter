@@ -1,3 +1,87 @@
+// ─── GOOGLE AUTH ───
+// Google Cloud ConsoleでOAuth 2.0クライアントIDを取得して設定してください
+// 未設定の場合は認証なしで全機能にアクセスできます
+const GOOGLE_CLIENT_ID = '';
+
+let googleUser = null; // { name, email, picture }
+
+function initGoogleAuth() {
+  if (!GOOGLE_CLIENT_ID) { updateAuthUI(); return; }
+  const stored = localStorage.getItem('_gUser');
+  if (stored) { try { googleUser = JSON.parse(stored); } catch {} }
+  updateAuthUI();
+  const script = document.createElement('script');
+  script.src = 'https://accounts.google.com/gsi/client';
+  script.async = true;
+  script.onload = () => {
+    google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: handleGoogleCredential,
+      auto_select: true,
+      cancel_on_tap_outside: false,
+    });
+    if (!googleUser) google.accounts.id.prompt();
+  };
+  document.head.appendChild(script);
+}
+
+function handleGoogleCredential(response) {
+  try {
+    const payload = JSON.parse(atob(response.credential.split('.')[1]));
+    googleUser = { name: payload.name, email: payload.email, picture: payload.picture };
+    localStorage.setItem('_gUser', JSON.stringify(googleUser));
+    updateAuthUI();
+    showToast(`${googleUser.name} でサインインしました`);
+  } catch(e) { console.error('Google auth error:', e); }
+}
+
+function updateAuthUI() {
+  const btn = document.getElementById('rail-user');
+  if (!btn) return;
+  if (googleUser) {
+    btn.innerHTML = `<img src="${googleUser.picture}" alt="${googleUser.name}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;display:block;">`;
+    btn.title = `${googleUser.name}\nクリックでサインアウト`;
+    btn.onclick = signOutGoogle;
+  } else {
+    btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
+    btn.title = 'Googleでサインイン';
+    btn.onclick = signInWithGoogle;
+  }
+}
+
+function signInWithGoogle() {
+  if (!GOOGLE_CLIENT_ID) { showToast('GOOGLE_CLIENT_IDを設定してください'); return; }
+  if (typeof google !== 'undefined') google.accounts.id.prompt();
+}
+
+function signOutGoogle() {
+  googleUser = null;
+  localStorage.removeItem('_gUser');
+  updateAuthUI();
+  showToast('サインアウトしました');
+  showPanel(1);
+}
+
+function showAuthModal() {
+  let modal = document.getElementById('auth-modal');
+  if (modal) { modal.style.display = 'flex'; return; }
+  modal = document.createElement('div');
+  modal.id = 'auth-modal';
+  modal.style.cssText = 'display:flex;position:fixed;inset:0;z-index:9500;align-items:center;justify-content:center;';
+  modal.innerHTML = `
+    <div style="position:absolute;inset:0;background:rgba(0,0,0,.4);" onclick="document.getElementById('auth-modal').style.display='none'"></div>
+    <div style="position:relative;background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:36px 40px;max-width:340px;width:90%;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,.18);z-index:1;">
+      <div style="font-size:36px;margin-bottom:16px;">🔐</div>
+      <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;color:var(--text);margin-bottom:8px;">サインインが必要です</div>
+      <div style="font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text2);margin-bottom:24px;line-height:1.6;">このページを表示するには<br>Googleアカウントでサインインしてください。</div>
+      <button onclick="signInWithGoogle();document.getElementById('auth-modal').style.display='none';" style="display:inline-flex;align-items:center;gap:10px;padding:11px 22px;background:#fff;border:1.5px solid var(--border2);border-radius:8px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;color:var(--text);transition:box-shadow .15s;" onmouseover="this.style.boxShadow='0 2px 12px rgba(0,0,0,.12)'" onmouseout="this.style.boxShadow=''">
+        <svg width="18" height="18" viewBox="0 0 18 18"><path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/><path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/></svg>
+        Googleでサインイン
+      </button>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
 // ─── CALENDAR PICKER ───
 const calState = {
   start: { year: 0, month: 0, value: null },
@@ -742,6 +826,7 @@ function showSaveBtn() {
 
 
 function init() {
+  initGoogleAuth();
   initPalette();
 
   const today = new Date();
@@ -1086,7 +1171,6 @@ function renderDashboard() {
   const empty = document.getElementById('dashboard-empty');
   if (!grid) return;
 
-  // ゲストモード：ダッシュボードに他プロジェクトを表示しない
   if (isGuestMode) {
     grid.style.display = 'none';
     if (empty) empty.style.display = 'none';
@@ -1096,13 +1180,11 @@ function renderDashboard() {
   grid.innerHTML = '';
 
   const snaps = getSnapshots();
-  // 案件名ごとに最新スナップを1件抽出
   const seen = new Map();
   snaps.forEach(snap => {
     const name = snap.data.projectName || '無題';
     if (!seen.has(name)) seen.set(name, snap);
   });
-
   const projects = [...seen.values()];
 
   if (!projects.length) {
@@ -1110,107 +1192,276 @@ function renderDashboard() {
     empty.style.display = 'block';
     return;
   }
-  grid.style.display = 'grid';
+
+  // 花がボードに浮かぶレイアウト
+  grid.style.cssText = 'display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-end;gap:40px 52px;padding:48px 20px 32px;';
   empty.style.display = 'none';
 
   projects.forEach(snap => {
-    const d  = snap.data;
-    const ts = new Date(snap.savedAt);
-    const tsStr = relativeTime(ts);
-    const cat = (d.categories || []).join(' / ') || '';
-    const taskCount = (d.members || []).reduce((s, m) => s + (m.tasks||[]).length, 0);
-    const totalDays = d.totalDays || 0;
+    const d = snap.data;
+    const tsStr = relativeTime(new Date(snap.savedAt));
 
-    const card = document.createElement('div');
-    card.className = 'proj-card';
-    card.addEventListener('click', () => {
-      confirmLeave(() => { loadSnapshot(snap.id); showPanel(2); });
-    });
+    const item = document.createElement('div');
+    item.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer;';
+    item.addEventListener('click', () => { confirmLeave(() => { loadSnapshot(snap.id); showPanel(2); }); });
 
-    // サムネイル（ミニガント風ビジュアル）
-    const thumb = document.createElement('div');
-    thumb.className = 'proj-card-thumb';
-    thumb.appendChild(makeMiniGantt(d));
+    // 花SVG（単体・背景なし）
+    const svg = makeFlowerSvg(d);
+    // ホバーで花（茎+頭）だけがふわっと上に動く
+    const flowerAnim = svg.querySelector('.flower-anim');
+    item.addEventListener('mouseenter', () => { if (flowerAnim) flowerAnim.style.transform = 'translateY(-10px)'; });
+    item.addEventListener('mouseleave', () => { if (flowerAnim) flowerAnim.style.transform = ''; });
+    item.appendChild(svg);
 
-    // カテゴリバッジ
-    if (cat) {
-      const badge = document.createElement('div');
-      badge.style.cssText = `position:absolute;top:10px;left:10px;background:rgba(91,78,245,.15);border:1px solid rgba(91,78,245,.25);color:var(--accent);border-radius:5px;padding:2px 8px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.5px;`;
-      badge.textContent = cat.length > 20 ? cat.slice(0,18)+'…' : cat;
-      thumb.appendChild(badge);
-    }
+    // プロジェクト名
+    const name = document.createElement('div');
+    name.style.cssText = `font-family:'Noto Sans JP',sans-serif;font-weight:700;font-size:12px;color:var(--text);text-align:center;max-width:110px;line-height:1.5;`;
+    name.textContent = d.projectName || '無題';
+    item.appendChild(name);
 
-    const body = document.createElement('div');
-    body.className = 'proj-card-body';
-    body.innerHTML = `
-      <div class="proj-card-name">${d.projectName || '無題'}</div>
-      <div class="proj-card-meta" style="margin-bottom:10px;">${tsStr}に保存</div>
-      <div style="display:flex;gap:12px;">
-        <div style="display:flex;align-items:center;gap:4px;font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);">
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><circle cx="6" cy="5" r="2.5" stroke="currentColor" stroke-width="1.3"/><path d="M1 13c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-          ${(d.members||[]).length}名
-        </div>
-        <div style="display:flex;align-items:center;gap:4px;font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);">
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="11" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M1 7h14M5 1v4M11 1v4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-          ${totalDays}日
-        </div>
-        <div style="display:flex;align-items:center;gap:4px;font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);">
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="6" height="2" rx=".5" fill="currentColor"/><rect x="1" y="7" width="9" height="2" rx=".5" fill="currentColor"/><rect x="1" y="11" width="4" height="2" rx=".5" fill="currentColor"/></svg>
-          ${taskCount}タスク
-        </div>
-      </div>`;
+    // 保存日時
+    const meta = document.createElement('div');
+    meta.style.cssText = `font-family:'DM Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:.3px;`;
+    meta.textContent = tsStr;
+    item.appendChild(meta);
 
-    card.appendChild(thumb);
-    card.appendChild(body);
-    grid.appendChild(card);
+    grid.appendChild(item);
   });
 }
 
-// ミニガントサムネイル（SVG）
-function makeMiniGantt(d) {
+// 単体花SVG（ボードに浮かぶ用・背景なし）
+function makeFlowerSvg(d) {
+  const W = 130, H = 222;
+
+  function hashCode(str) {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+    return Math.abs(h);
+  }
+  function seededRand(seed) {
+    let s = seed >>> 0;
+    return () => { s = (Math.imul(1664525, s) + 1013904223) >>> 0; return s / 0xffffffff; };
+  }
+
+  const seed = hashCode(d.projectName || 'default');
+  const rand = seededRand(seed);
+
+  // 花の色（参照画像トーン：白・クリーム系の花弁 × 濃いグリーンの茎）
+  const flowerColors = [
+    { petal:'#FFFFFF', center:'#C8952A' },   // 白 × ゴールド
+    { petal:'#F5F0E8', center:'#3D7A50' },   // クリーム × グリーン
+    { petal:'#FFFFFF', center:'#B86C2A' },   // 白 × アンバー
+    { petal:'#EAF0EA', center:'#4A7A3A' },   // 淡グリーン × 濃グリーン
+    { petal:'#FFFFFF', center:'#7A5C14' },   // 白 × ダークゴールド
+    { petal:'#F0EDE6', center:'#5A7A2C' },   // 温白 × オリーブグリーン
+    { petal:'#E8EDE8', center:'#3A6870' },   // 淡グリーン × ティール
+  ];
+  const col      = flowerColors[seed % flowerColors.length];
+  const stemCol  = '#2D6A3F';   // 濃いグリーン
+  const leafCol  = '#1F5530';   // さらに濃いグリーン
+  const vaseCol  = '#FFFFFF';   // 白い花瓶
+
+  // レイアウト寸法
+  const cx    = W / 2;         // 水平中心
+  const cy    = 52;            // 花の中心Y
+  const vTop  = 120;           // 花瓶の口Y
+  const vBot  = 200;           // 花瓶の底Y
+  const tilt  = ((seed % 9) - 4) * 1.6;  // 自然な傾き
+
+  // ── 茎（花頭下〜花瓶の口の少し中まで） ──
+  const sway = ((seed % 5) - 2) * 5;
+  const stem = `<path d="M${cx},${cy+26} C${cx+sway},${cy+60} ${cx-sway*0.5},${vTop+14} ${cx},${vTop+14}" stroke="${stemCol}" stroke-width="8" stroke-linecap="round" fill="none"/>`;
+
+  // ── 葉 ──
+  const ly   = cy + 65;
+  const ldir = (seed % 2 === 0) ? 1 : -1;
+  const leaf = `<path d="M${cx+ldir*3},${ly} C${cx+ldir*36},${ly-18} ${cx+ldir*30},${ly+13} ${cx+ldir*3},${ly+8}Z" fill="${leafCol}"/>`;
+
+  // ── 花の頭（3種） ──
+  const type = seed % 3;
+  let head = '';
+  if (type === 0) {
+    const R=30, pr=13, pry=18;
+    for (let i=0; i<5; i++) {
+      const a=(i/5)*Math.PI*2-Math.PI/2;
+      const px=+(cx+Math.cos(a)*R).toFixed(1), py=+(cy+Math.sin(a)*R).toFixed(1);
+      head += `<ellipse cx="${px}" cy="${py}" rx="${pr}" ry="${pry}" fill="${col.petal}" transform="rotate(${+(a*180/Math.PI+90).toFixed(1)},${px},${py})"/>`;
+    }
+    head += `<circle cx="${cx}" cy="${cy}" r="16" fill="${col.center}"/>`;
+  } else if (type === 1) {
+    const W2=22, Ht=36, bot=14, sh=5;
+    head += `<path d="M${cx-W2},${cy+bot} C${cx-W2-2},${cy-8} ${cx-10},${cy-Ht} ${cx},${cy-Ht-2} C${cx+10},${cy-Ht} ${cx+W2+2},${cy-8} ${cx+W2},${cy+bot} Q${cx},${cy+bot+11} ${cx-W2},${cy+bot}Z" fill="${col.petal}"/>`;
+    head += `<path d="M${cx-sh},${cy-4} C${cx-3},${cy-26} ${cx+2},${cy-Ht} ${cx+sh},${cy-Ht+6} C${cx+7},${cy-13} ${cx+3},${cy+3} ${cx-sh},${cy-4}Z" fill="${col.center}" opacity="0.42"/>`;
+  } else {
+    const R=24, pr=16;
+    for (let i=0; i<6; i++) {
+      const a=(i/6)*Math.PI*2-Math.PI/2;
+      const px=+(cx+Math.cos(a)*R).toFixed(1), py=+(cy+Math.sin(a)*R).toFixed(1);
+      head += `<circle cx="${px}" cy="${py}" r="${pr}" fill="${col.petal}"/>`;
+    }
+    head += `<circle cx="${cx}" cy="${cy}" r="17" fill="${col.center}"/>`;
+  }
+
+  // ── 花瓶（4種シェイプ・白フラット） ──
+  const vt = vTop, vb = vBot;
+  const vaseType = seed % 4;
+  let vase = '';
+
+  if (vaseType === 0) {
+    // クラシック丸壺
+    vase = `<path d="M${cx-9},${vt} C${cx-9},${vt+10} ${cx-30},${vt+26} ${cx-28},${vt+50} C${cx-26},${vt+64} ${cx-13},${vb-4} ${cx-10},${vb} L${cx+10},${vb} C${cx+13},${vb-4} ${cx+26},${vt+64} ${cx+28},${vt+50} C${cx+30},${vt+26} ${cx+9},${vt+10} ${cx+9},${vt}Z" fill="${vaseCol}"/>
+      <ellipse cx="${cx}" cy="${vb}" rx="12" ry="4" fill="${vaseCol}"/>`;
+  } else if (vaseType === 1) {
+    // 細長いボトル
+    vase = `<path d="M${cx-7},${vt} C${cx-7},${vt+8} ${cx-13},${vt+18} ${cx-13},${vt+30} L${cx-13},${vb-6} C${cx-13},${vb-1} ${cx-16},${vb} ${cx-16},${vb} L${cx+16},${vb} C${cx+16},${vb} ${cx+13},${vb-1} ${cx+13},${vb-6} L${cx+13},${vt+30} C${cx+13},${vt+18} ${cx+7},${vt+8} ${cx+7},${vt}Z" fill="${vaseCol}"/>
+      <ellipse cx="${cx}" cy="${vb}" rx="17" ry="4.5" fill="${vaseCol}"/>`;
+  } else if (vaseType === 2) {
+    // ひょうたん型
+    vase = `<path d="M${cx-8},${vt} C${cx-8},${vt+6} ${cx-22},${vt+14} ${cx-22},${vt+26} C${cx-22},${vt+36} ${cx-11},${vt+41} ${cx-11},${vt+48} C${cx-11},${vt+56} ${cx-28},${vt+64} ${cx-28},${vb-10} C${cx-28},${vb-2} ${cx-14},${vb} ${cx-14},${vb} L${cx+14},${vb} C${cx+14},${vb} ${cx+28},${vb-2} ${cx+28},${vb-10} C${cx+28},${vt+64} ${cx+11},${vt+56} ${cx+11},${vt+48} C${cx+11},${vt+41} ${cx+22},${vt+36} ${cx+22},${vt+26} C${cx+22},${vt+14} ${cx+8},${vt+6} ${cx+8},${vt}Z" fill="${vaseCol}"/>
+      <ellipse cx="${cx}" cy="${vb}" rx="15" ry="4" fill="${vaseCol}"/>`;
+  } else {
+    // 広口アンフォラ
+    vase = `<path d="M${cx-10},${vt} C${cx-10},${vt+9} ${cx-26},${vt+22} ${cx-30},${vt+44} C${cx-32},${vt+58} ${cx-22},${vb-8} ${cx-18},${vb} L${cx+18},${vb} C${cx+22},${vb-8} ${cx+32},${vt+58} ${cx+30},${vt+44} C${cx+26},${vt+22} ${cx+10},${vt+9} ${cx+10},${vt}Z" fill="${vaseCol}"/>
+      <ellipse cx="${cx}" cy="${vb}" rx="20" ry="5" fill="${vaseCol}"/>`;
+  }
+
+  // 花瓶の口のハイライト（奥行き感）
+  const vaseNeck = `<ellipse cx="${cx}" cy="${vt}" rx="9" ry="3" fill="${vaseCol}" opacity="0.7"/>`;
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('width', W);
+  svg.setAttribute('height', H);
+  // 花瓶は安定、花＋茎は傾き＋ホバーアニメ用の2重グループ
+  svg.innerHTML = `
+    <g transform="rotate(${tilt},${cx},${vt})">
+      <g class="flower-anim" style="transition:transform .25s cubic-bezier(.34,1.56,.64,1);">
+        ${stem}${leaf}${head}
+      </g>
+    </g>
+    ${vase}${vaseNeck}`;
+  return svg;
+}
+
+// 花束サムネイル（SVG）— 互換用（旧カードで参照されている場合に備えて残す）
+function makeFlowerThumb(d) {
   const W = 320, H = 160;
-  const members = d.members || [];
-  const phases  = d.phases || ['要件定義','設計','実装','テスト','リリース'];
-  const COLORS  = ['#5b4ef5','#2563eb','#059669','#db2777','#d97706','#f97316','#6b7280'];
-  const phaseColor = {};
-  phases.forEach((p, i) => { phaseColor[p] = COLORS[i % COLORS.length]; });
 
-  const totalDays = d.totalDays || 60;
-  const rowH = 14;
-  const gap  = 5;
-  const labelW = 60;
-  const barAreaW = W - labelW - 12;
+  function hashCode(str) {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+    return Math.abs(h);
+  }
+  function seededRand(seed) {
+    let s = seed >>> 0;
+    return () => { s = (Math.imul(1664525, s) + 1013904223) >>> 0; return s / 0xffffffff; };
+  }
 
-  let bars = '';
-  let y = 16;
-  members.forEach((m, mi) => {
-    if (y > H - 10) return;
-    const col = ['#7c6bff','#ec4899','#f59e0b','#14b8a6','#f97316','#3b82f6','#059669'][mi % 7];
-    // メンバーラベル
-    const init = (m.name||m.role||'?').slice(0,2);
-    bars += `<circle cx="${labelW-14}" cy="${y+rowH/2}" r="7" fill="${col}" opacity=".9"/>`;
-    bars += `<text x="${labelW-14}" y="${y+rowH/2+4}" text-anchor="middle" font-size="6" fill="#fff" font-family="sans-serif">${init}</text>`;
-    (m.tasks||[]).slice(0,6).forEach(t => {
-      if (y > H - 10) return;
-      const startOff = totalDays > 0 ? Math.round(daysBetweenSafe(d.startDate, t.startDate) / totalDays * barAreaW) : 0;
-      const barW     = totalDays > 0 ? Math.max(4, Math.round((t.days||3) / totalDays * barAreaW)) : 8;
-      const x        = labelW + Math.max(0, startOff);
-      const c        = phaseColor[t.phase] || col;
-      bars += `<rect x="${x}" y="${y}" width="${Math.min(barW, barAreaW - startOff)}" height="${rowH}" rx="3" fill="${c}" opacity=".85"/>`;
-      y += rowH + gap;
-    });
-    y += 4;
+  const seed = hashCode(d.projectName || 'default');
+  const rand = seededRand(seed);
+
+  // 背景色（淡いトーン）
+  const bgs = ['#FFFDE8','#FFF0F6','#EFF6FF','#FEFCE8','#FAF5FF','#F0FDF4'];
+  const bg = bgs[seed % bgs.length];
+  const stemCol = '#22C55E';
+
+  // 花ごとの花弁色・中心色
+  const flowerColors = [
+    { petal:'#F472B6', center:'#EC4899' }, // ピンク
+    { petal:'#F97316', center:'#EA580C' }, // オレンジ
+    { petal:'#FDE047', center:'#F59E0B' }, // イエロー
+    { petal:'#60A5FA', center:'#FBBF24' }, // ブルー
+    { petal:'#C084FC', center:'#A855F7' }, // パープル
+    { petal:'#FB923C', center:'#DC2626' }, // オレンジレッド
+    { petal:'#34D399', center:'#059669' }, // グリーン
+  ];
+
+  // 花束の根元（茎が集まる点）
+  const baseX = W / 2, baseY = 155;
+
+  // 花の配置定義: [角度(ラジアン), 茎の長さ, 花タイプ(0=デイジー,1=チューリップ,2=バブリー), スケール]
+  const allDefs = [
+    { a: -0.55, dist: 88,  type: 0, s: 0.92 },
+    { a: -0.25, dist: 108, type: 2, s: 1.05 },
+    { a:  0.00, dist: 118, type: 1, s: 1.15 },
+    { a:  0.25, dist: 104, type: 0, s: 1.0  },
+    { a:  0.52, dist: 84,  type: 2, s: 0.88 },
+  ];
+  const count = 3 + (seed % 3); // 3〜5本
+  const defs = count === 3 ? [allDefs[0], allDefs[2], allDefs[4]]
+             : count === 4 ? [allDefs[0], allDefs[1], allDefs[3], allDefs[4]]
+             : allDefs;
+
+  // 色の割り当て（シードベースでシャッフル）
+  const colorOrder = [0,1,2,3,4,5,6].sort((a,b) => {
+    const ra = seededRand(seed + a); const rb = seededRand(seed + b);
+    return ra() - rb();
   });
 
-  const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  let stems = '', leaves = '', heads = '';
+
+  defs.forEach((def, i) => {
+    const col = flowerColors[colorOrder[i] % flowerColors.length];
+    const cx = +(baseX + Math.sin(def.a) * def.dist).toFixed(1);
+    const cy = +(baseY - Math.cos(def.a) * def.dist).toFixed(1);
+    const S  = def.s;
+
+    // 茎（花頭下部〜根元へ緩やかなカーブ）
+    const midX = +((cx + baseX) / 2 + Math.sin(def.a) * 8).toFixed(1);
+    const midY = +((cy + baseY) / 2).toFixed(1);
+    stems += `<path d="M${cx},${(+cy + 24*S).toFixed(1)} Q${midX},${midY} ${baseX},${baseY}" stroke="${stemCol}" stroke-width="${(8*S).toFixed(1)}" stroke-linecap="round" fill="none"/>`;
+
+    // 葉（交互に左右）
+    if (i % 2 === 0) {
+      const ly = +(+cy + 52*S).toFixed(1);
+      const ldir = def.a >= 0 ? -1 : 1;
+      const lx = +(+cx + ldir * 3).toFixed(1);
+      leaves += `<path d="M${lx},${ly} C${lx+ldir*36},${+ly-18} ${lx+ldir*30},${+ly+12} ${lx},${+ly+8}Z" fill="${stemCol}"/>`;
+    }
+
+    // 花頭
+    if (def.type === 0) {
+      // デイジー（5枚楕円花弁）
+      const R=28*S, pr=14*S, pry=19*S;
+      for (let j=0; j<5; j++) {
+        const ang = (j/5)*Math.PI*2 - Math.PI/2;
+        const px = +(+cx + Math.cos(ang)*R).toFixed(1);
+        const py = +(+cy + Math.sin(ang)*R).toFixed(1);
+        const rot = +(ang*180/Math.PI+90).toFixed(1);
+        heads += `<ellipse cx="${px}" cy="${py}" rx="${pr.toFixed(1)}" ry="${pry.toFixed(1)}" fill="${col.petal}" transform="rotate(${rot},${px},${py})"/>`;
+      }
+      heads += `<circle cx="${cx}" cy="${cy}" r="${(15*S).toFixed(1)}" fill="${col.center}"/>`;
+
+    } else if (def.type === 1) {
+      // チューリップ（カップ形）
+      const W2=24*S, Ht=38*S, bot=15*S, Scp=6*S;
+      heads += `<path d="M${+cx-W2},${+cy+bot} C${+cx-W2-2},${+cy-8*S} ${+cx-10*S},${+cy-Ht} ${cx},${+cy-Ht-2} C${+cx+10*S},${+cy-Ht} ${+cx+W2+2},${+cy-8*S} ${+cx+W2},${+cy+bot} Q${cx},${+cy+bot+12*S} ${+cx-W2},${+cy+bot}Z" fill="${col.petal}"/>`;
+      heads += `<path d="M${+cx-Scp},${+cy-4*S} C${+cx-4*S},${+cy-26*S} ${+cx+2*S},${+cy-Ht} ${+cx+Scp},${+cy-Ht+6*S} C${+cx+8*S},${+cy-14*S} ${+cx+3*S},${+cy+3*S} ${+cx-Scp},${+cy-4*S}Z" fill="${col.center}" opacity="0.5"/>`;
+
+    } else {
+      // バブリー（6枚丸花弁）
+      const R=24*S, pr=17*S;
+      for (let j=0; j<6; j++) {
+        const ang = (j/6)*Math.PI*2 - Math.PI/2;
+        const px = +(+cx + Math.cos(ang)*R).toFixed(1);
+        const py = +(+cy + Math.sin(ang)*R).toFixed(1);
+        heads += `<circle cx="${px}" cy="${py}" r="${pr.toFixed(1)}" fill="${col.petal}"/>`;
+      }
+      heads += `<circle cx="${cx}" cy="${cy}" r="${(16*S).toFixed(1)}" fill="${col.center}"/>`;
+    }
+  });
+
+  // 花束の根元リボン
+  const bx = baseX, by = baseY;
+  const ribbon = `<path d="M${bx-26},${by-6} Q${bx},${by+8} ${bx+26},${by-6} Q${bx+14},${by+20} ${bx},${by+22} Q${bx-14},${by+20} ${bx-26},${by-6}Z" fill="#FCD34D"/>
+    <path d="M${bx-26},${by-6} Q${bx},${by+2} ${bx+26},${by-6}" stroke="#F59E0B" stroke-width="1.5" fill="none"/>`;
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   svg.setAttribute('width', '100%');
   svg.setAttribute('height', '100%');
   svg.style.cssText = 'position:absolute;inset:0;';
-  svg.innerHTML = `
-    <rect width="${W}" height="${H}" fill="var(--bg3)"/>
-    ${Array.from({length:8},(_,i)=>`<line x1="${labelW + i*(barAreaW/8)}" y1="0" x2="${labelW + i*(barAreaW/8)}" y2="${H}" stroke="var(--border)" stroke-width=".5"/>`).join('')}
-    ${bars}`;
+  svg.innerHTML = `<rect width="${W}" height="${H}" fill="${bg}"/>${stems}${leaves}${ribbon}${heads}`;
   return svg;
 }
 
@@ -1765,6 +2016,14 @@ function removeWikiBlock(id) {
   renderWiki();
 }
 
+function linkifyText(text) {
+  const escaped = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return escaped.replace(/https?:\/\/[^\s]+/g, url => {
+    const safeUrl = url.replace(/"/g,'&quot;');
+    return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:underline;word-break:break-all;">${url}</a>`;
+  });
+}
+
 function makeWikiBlock(block, i) {
   const wrap = document.createElement('div');
   wrap.className = 'wiki-block';
@@ -1815,9 +2074,42 @@ function makeWikiBlock(block, i) {
       ta.style.height = ta.scrollHeight + 'px';
       getWikiBlocks()[i].content = ta.value;
     });
+
+    // プレビュー（URLをリンク化して表示）
+    const preview = document.createElement('div');
+    preview.className = 'wiki-text-preview';
+    preview.style.cssText = `font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text);line-height:1.7;white-space:pre-wrap;word-break:break-all;cursor:text;min-height:20px;padding:2px 0;`;
+
+    const updatePreview = () => {
+      const val = ta.value;
+      if (val) {
+        preview.innerHTML = linkifyText(val);
+        preview.style.display = '';
+        ta.style.display = 'none';
+      } else {
+        preview.style.display = 'none';
+        ta.style.display = '';
+      }
+    };
+
+    ta.addEventListener('blur', updatePreview);
+    preview.addEventListener('click', e => {
+      if (e.target.tagName === 'A') return;
+      preview.style.display = 'none';
+      ta.style.display = '';
+      ta.focus();
+      ta.style.height = 'auto';
+      ta.style.height = ta.scrollHeight + 'px';
+    });
+
     wrap.appendChild(ta);
-    // 初期高さ
-    setTimeout(() => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }, 0);
+    wrap.appendChild(preview);
+    // 初期状態
+    setTimeout(() => {
+      ta.style.height = 'auto';
+      ta.style.height = ta.scrollHeight + 'px';
+      updatePreview();
+    }, 0);
 
   } else if (block.type === 'link') {
     wrap.classList.add('wiki-block-link');
@@ -2000,6 +2292,7 @@ function closeSidebar() {
 }
 
 function showPanel(n) {
+  if (n === 0 && GOOGLE_CLIENT_ID && !googleUser) { showAuthModal(); return; }
   const doShow = () => {
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.nav-step').forEach(s => s.classList.remove('active'));
@@ -2719,14 +3012,14 @@ function makeChildRowPair(mi, path, t, dates, d, COL_W, ROW_H, LABEL_W, depth) {
   bar.style.cssText = `position:absolute;height:16px;top:50%;transform:translateY(-50%);border-radius:4px;background:${barColor};opacity:.8;left:${startOff*COL_W+1}px;width:${barDays*COL_W-2}px;display:flex;align-items:center;padding:0 5px 0 6px;cursor:grab;user-select:none;box-sizing:border-box;z-index:2;transition:box-shadow .15s;`;
 
   const resizeHandleLeft = document.createElement('div');
-  resizeHandleLeft.style.cssText = `position:absolute;left:0;top:0;bottom:0;width:10px;cursor:ew-resize;border-radius:4px 0 0 4px;background:rgba(255,255,255,.25);z-index:3;`;
+  resizeHandleLeft.style.cssText = `position:absolute;left:-4px;top:50%;transform:translateY(-50%);width:9px;height:9px;border-radius:50%;background:#fff;opacity:0.88;cursor:ew-resize;z-index:3;box-shadow:0 0 0 1.5px rgba(0,0,0,0.13);`;
 
   const barLabel = document.createElement('span');
   barLabel.textContent = t.name;
   barLabel.style.cssText = `font-size:9px;color:rgba(255,255,255,.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;flex:1;padding-left:3px;`;
 
   const resizeHandle = document.createElement('div');
-  resizeHandle.style.cssText = `position:absolute;right:0;top:0;bottom:0;width:5px;cursor:ew-resize;border-radius:0 4px 4px 0;background:rgba(255,255,255,.2);`;
+  resizeHandle.style.cssText = `position:absolute;right:-4px;top:50%;transform:translateY(-50%);width:9px;height:9px;border-radius:50%;background:#fff;opacity:0.88;cursor:ew-resize;z-index:3;box-shadow:0 0 0 1.5px rgba(0,0,0,0.13);`;
 
   bar.appendChild(resizeHandleLeft);
   bar.appendChild(barLabel);
@@ -3821,23 +4114,23 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
 
     const cBar = document.createElement('div');
     cBar.setAttribute('data-phase',phase);
-    cBar.style.cssText=`position:absolute;left:${cOff*COL_W+1}px;top:3px;width:${Math.max(4,cW)}px;height:${rowH-8}px;background:${phaseColor}${barAlpha};border-radius:99px;overflow:visible;cursor:grab;user-select:none;z-index:2;`;
+    cBar.style.cssText=`position:absolute;left:${cOff*COL_W+1}px;top:3px;width:${Math.max(4,cW)}px;height:${rowH-8}px;background:${phaseColor}${barAlpha};border-radius:99px;overflow:hidden;cursor:grab;user-select:none;z-index:2;`;
 
-    // 左リサイズハンドル
-    const cResizeLeft = document.createElement('div');
-    cResizeLeft.style.cssText=`position:absolute;left:0;top:0;width:6px;height:100%;cursor:ew-resize;background:rgba(255,255,255,0.2);border-radius:99px 0 0 99px;z-index:3;`;
-    cBar.appendChild(cResizeLeft);
-
-    // 右リサイズハンドル
-    const cResize = document.createElement('div');
-    cResize.style.cssText=`position:absolute;right:0;top:0;width:6px;height:100%;cursor:ew-resize;background:rgba(255,255,255,0.2);border-radius:0 99px 99px 0;z-index:3;`;
-    cBar.appendChild(cResize);
-
-    // バーラベルをバーの右横に配置（rcRow内の絶対位置）
+    // バーラベルをバー外（右横）に配置
     const cBarLabel = document.createElement('span');
     cBarLabel.id=cBarLabelId;
     cBarLabel.style.cssText=`position:absolute;left:${cOff*COL_W+1+Math.max(4,cW)+4}px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--text2);white-space:nowrap;pointer-events:none;font-family:'DM Sans',sans-serif;z-index:1;`;
     cBarLabel.textContent=child.name;
+
+    // 左リサイズハンドル（丸ドット）
+    const cResizeLeft = document.createElement('div');
+    cResizeLeft.style.cssText=`position:absolute;left:-4px;top:50%;transform:translateY(-50%);width:8px;height:8px;border-radius:50%;background:#fff;opacity:0.85;cursor:ew-resize;z-index:3;box-shadow:0 0 0 1.5px rgba(0,0,0,0.12);`;
+    cBar.appendChild(cResizeLeft);
+
+    // 右リサイズハンドル（丸ドット）
+    const cResize = document.createElement('div');
+    cResize.style.cssText=`position:absolute;right:-4px;top:50%;transform:translateY(-50%);width:8px;height:8px;border-radius:50%;background:#fff;opacity:0.85;cursor:ew-resize;z-index:3;box-shadow:0 0 0 1.5px rgba(0,0,0,0.12);`;
+    cBar.appendChild(cResize);
 
     // バードラッグ（グリッドスナップ + フェーズ自動更新）
     cBar.addEventListener('mousedown', e=>{
@@ -3856,7 +4149,7 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
         lastDelta = cd;
         const newLeft = Math.max(0, origLeft + cd * COL_W);
         cBar.style.left = newLeft + 'px';
-        cBarLabel.style.left = (newLeft + barW + 4) + 'px';
+        cBarLabel.style.left = (newLeft + parseInt(cBar.style.width) + 4) + 'px';
       };
       const onUp=()=>{
         cBar.style.cursor='grab';
@@ -3925,7 +4218,7 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
     cBar.addEventListener('mouseleave',()=>{ if(tooltip) tooltip.style.display='none'; });
 
     rcRow.appendChild(cBar);
-    rcRow.appendChild(cBarLabel); // バーの右横にラベル
+    rcRow.appendChild(cBarLabel);
 
     // 左右同時追加
     gtLeftBody.appendChild(lcRow);
@@ -3941,7 +4234,10 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
 
 let currentGanttView = 'member';
 let ganttLabelWidth = 220;
-let isGuestMode = false; // 共有URLからアクセス中は true // 左カラム幅（ドラッグリサイズで変更）
+let ganttColWidth = 28; // ズーム用カラム幅（デフォルト28px = 100%）
+const GANTT_COL_DEFAULT = 28;
+const GANTT_COL_STEPS = [8, 10, 12, 16, 20, 28, 36, 48]; // ズームステップ
+let isGuestMode = false; // 共有URLからアクセス中は true
 
 // ガント左カラムのドラッグリサイズを初期化する
 function attachGanttColResize(container) {
@@ -3976,6 +4272,24 @@ function attachGanttColResize(container) {
   });
 }
 
+function ganttZoom(dir) {
+  const idx = GANTT_COL_STEPS.indexOf(ganttColWidth);
+  const cur = idx >= 0 ? idx : GANTT_COL_STEPS.indexOf(GANTT_COL_DEFAULT);
+  const next = Math.max(0, Math.min(GANTT_COL_STEPS.length - 1, cur + dir));
+  ganttColWidth = GANTT_COL_STEPS[next];
+  // パーセント表示更新
+  const label = document.getElementById('gantt-zoom-label');
+  if (label) label.textContent = Math.round(ganttColWidth / GANTT_COL_DEFAULT * 100) + '%';
+  // ±ボタンの活性制御
+  const btnOut = document.getElementById('gantt-zoom-out');
+  const btnIn  = document.getElementById('gantt-zoom-in');
+  if (btnOut) btnOut.style.opacity = next === 0 ? '0.3' : '1';
+  if (btnIn)  btnIn.style.opacity  = next === GANTT_COL_STEPS.length - 1 ? '0.3' : '1';
+  // 再描画
+  if (currentGanttView === 'phase') renderGanttByPhase();
+  else renderGantt();
+}
+
 function switchGanttView(view) {
   currentGanttView = view;
   const btnM = document.getElementById('gantt-tab-member');
@@ -3998,7 +4312,7 @@ function renderGanttByPhase() {
   if (!d) return;
   assignTaskDates();
 
-  const COL_W  = 28;
+  const COL_W  = ganttColWidth;
   const ROW_H  = 36;
   const LABEL_W = ganttLabelWidth;
   const today  = toDateStr(new Date());
@@ -4044,14 +4358,14 @@ function renderGanttByPhase() {
       <div id="gt-col-resize" style="width:5px;flex-shrink:0;cursor:col-resize;background:transparent;border-left:1px solid var(--border2);border-right:1px solid var(--border2);transition:background .15s;z-index:15;box-sizing:border-box;" title="ドラッグで幅を変更"></div>
       <div id="gt-right" style="flex:1;min-width:0;overflow:auto;display:flex;flex-direction:column;">
         <div id="gt-right-head" style="flex-shrink:0;background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10;width:${gridW}px;">
-          <div style="display:flex;height:22px;border-bottom:1px solid var(--border);">
-            ${dates.map((dt,di)=>{ const isMStart=dt.endsWith('-01')||dt===d.startDate; return `<div style="width:${COL_W}px;min-width:${COL_W}px;border-left:${isMStart?'1px solid var(--border2)':'none'};box-sizing:border-box;"></div>`; }).join('')}
+          <div style="display:flex;height:22px;border-bottom:1px solid var(--border);background:var(--bg2);">
+            ${dates.map((dt,di)=>{ const isMStart=dt.endsWith('-01')||dt===d.startDate; return `<div style="width:${COL_W}px;min-width:${COL_W}px;background:var(--bg2);border-left:${isMStart?'1px solid var(--border2)':'none'};box-sizing:border-box;"></div>`; }).join('')}
           </div>
-          <div style="display:flex;height:22px;border-bottom:1px solid var(--border);">
-            ${dates.map((dt,di)=>{ const [,m2,day]=dt.split('-'); const isFirst=day==='01'||dt===d.startDate; return `<div style="width:${COL_W}px;min-width:${COL_W}px;text-align:center;font-family:'DM Mono',monospace;font-size:9px;padding:3px 0;color:var(--text3);border-left:${isFirst?'1px solid var(--border2)':'none'};box-sizing:border-box;">${isFirst?parseInt(m2)+'月':''}</div>`; }).join('')}
+          <div style="display:flex;height:22px;border-bottom:1px solid var(--border);background:var(--bg2);">
+            ${dates.map((dt,di)=>{ const [,m2,day]=dt.split('-'); const isFirst=day==='01'||dt===d.startDate; return `<div style="width:${COL_W}px;min-width:${COL_W}px;text-align:center;font-family:'DM Mono',monospace;font-size:${COL_W<14?'7':'9'}px;padding:3px 0;color:var(--text3);background:var(--bg2);border-left:${isFirst?'1px solid var(--border2)':'none'};box-sizing:border-box;overflow:hidden;">${isFirst?parseInt(m2)+'月':''}</div>`; }).join('')}
           </div>
-          <div style="display:flex;height:18px;border-bottom:1px solid var(--border);">
-            ${dates.map((dt,di)=>{ const DOW_JP=['日','月','火','水','木','金','土']; const dow=parseDate(dt).getDay(); const off=isOffDay(dt); const isT=dt===today; const col=isT?'var(--accent)':dow===0||isHoliday(dt)?'#dc2626':dow===6?'#2563eb':'var(--text3)'; return `<div style="width:${COL_W}px;min-width:${COL_W}px;text-align:center;font-family:'DM Mono',monospace;font-size:8px;padding:1px 0 3px;color:${col};">${DOW_JP[dow]}</div>`; }).join('')}
+          <div style="display:flex;height:18px;border-bottom:1px solid var(--border);background:var(--bg2);">
+            ${dates.map((dt,di)=>{ const DOW_JP=['日','月','火','水','木','金','土']; const dow=parseDate(dt).getDay(); const isT=dt===today; const col=isT?'var(--accent)':dow===0||isHoliday(dt)?'#dc2626':dow===6?'#2563eb':'var(--text3)'; return `<div style="width:${COL_W}px;min-width:${COL_W}px;text-align:center;font-family:'DM Mono',monospace;font-size:8px;padding:1px 0 3px;color:${col};background:var(--bg2);overflow:hidden;">${COL_W>=14?DOW_JP[dow]:''}</div>`; }).join('')}
           </div>
         </div>
         <div id="gt-right-body" style="position:relative;width:${gridW}px;"></div>
@@ -4102,15 +4416,19 @@ function renderGanttByPhase() {
 
     // フェーズヘッダー行（ドラッグハンドル付き）
     const lPhaseRow = document.createElement('div');
-    lPhaseRow.style.cssText = `display:flex;align-items:center;background:var(--bg2);border-bottom:1px solid var(--border);min-height:34px;padding:0 10px 0 6px;gap:6px;`;
+    lPhaseRow.style.cssText = `display:flex;align-items:center;background:var(--bg2);border-bottom:1px solid var(--border);height:34px;overflow:hidden;padding:0 10px 0 6px;gap:6px;`;
     lPhaseRow.setAttribute('data-phase-row', phase);
 
-    // ドラッグハンドル
+    // ドラッグハンドル（ゲストモードでは非表示）
     const phaseHandle = document.createElement('div');
-    phaseHandle.style.cssText = `width:14px;flex-shrink:0;cursor:grab;display:flex;flex-direction:column;gap:2px;align-items:center;justify-content:center;opacity:0.2;padding:4px 0;`;
-    phaseHandle.innerHTML = '<span style="display:block;width:10px;height:1.5px;background:var(--text3);border-radius:1px;"></span><span style="display:block;width:10px;height:1.5px;background:var(--text3);border-radius:1px;"></span><span style="display:block;width:10px;height:1.5px;background:var(--text3);border-radius:1px;"></span>';
-    lPhaseRow.addEventListener('mouseenter', () => phaseHandle.style.opacity = '0.5');
-    lPhaseRow.addEventListener('mouseleave', () => phaseHandle.style.opacity = '0.2');
+    if (isGuestMode) {
+      phaseHandle.style.cssText = `width:14px;flex-shrink:0;`;
+    } else {
+      phaseHandle.style.cssText = `width:14px;flex-shrink:0;cursor:grab;display:flex;flex-direction:column;gap:2px;align-items:center;justify-content:center;opacity:0.2;padding:4px 0;`;
+      phaseHandle.innerHTML = '<span style="display:block;width:10px;height:1.5px;background:var(--text3);border-radius:1px;"></span><span style="display:block;width:10px;height:1.5px;background:var(--text3);border-radius:1px;"></span><span style="display:block;width:10px;height:1.5px;background:var(--text3);border-radius:1px;"></span>';
+      lPhaseRow.addEventListener('mouseenter', () => phaseHandle.style.opacity = '0.5');
+      lPhaseRow.addEventListener('mouseleave', () => phaseHandle.style.opacity = '0.2');
+    }
 
     // フェーズ色ドット＋名前
     const phaseDot = document.createElement('div');
@@ -4119,26 +4437,27 @@ function renderGanttByPhase() {
     phaseNameEl.style.cssText = `font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--text2);flex:1;`;
     phaseNameEl.textContent = phase;
 
-    // タスク追加ボタン
-    const phaseAddBtn = document.createElement('button');
-    phaseAddBtn.textContent = '＋ タスク追加';
-    phaseAddBtn.style.cssText = `background:transparent;border:1px dashed var(--border2);border-radius:4px;padding:2px 8px;color:var(--text3);font-family:'DM Sans',sans-serif;font-size:10px;cursor:pointer;transition:all .15s;flex-shrink:0;`;
-    phaseAddBtn.onmouseenter = function(){ this.style.borderColor='var(--accent)'; this.style.color='var(--accent)'; };
-    phaseAddBtn.onmouseleave = function(){ this.style.borderColor='var(--border2)'; this.style.color='var(--text3)'; };
-    phaseAddBtn.onclick = function() {
-      if (!generatedData?.members?.length) return;
-      generatedData.members[0].tasks.push({
-        name: '新しいタスク', phase, days: 3, priority: 'todo',
-        description: '', startDate: null, endDate: null, children: []
-      });
-      renderGanttByPhase();
-      syncMemberUI();
-    };
-
     lPhaseRow.appendChild(phaseHandle);
     lPhaseRow.appendChild(phaseDot);
     lPhaseRow.appendChild(phaseNameEl);
-    lPhaseRow.appendChild(phaseAddBtn);
+    if (!isGuestMode) {
+      // タスク追加ボタン
+      const phaseAddBtn = document.createElement('button');
+      phaseAddBtn.textContent = '＋ タスク追加';
+      phaseAddBtn.style.cssText = `background:transparent;border:1px dashed var(--border2);border-radius:4px;padding:2px 8px;color:var(--text3);font-family:'DM Sans',sans-serif;font-size:10px;cursor:pointer;transition:all .15s;flex-shrink:0;`;
+      phaseAddBtn.onmouseenter = function(){ this.style.borderColor='var(--accent)'; this.style.color='var(--accent)'; };
+      phaseAddBtn.onmouseleave = function(){ this.style.borderColor='var(--border2)'; this.style.color='var(--text3)'; };
+      phaseAddBtn.onclick = function() {
+        if (!generatedData?.members?.length) return;
+        generatedData.members[0].tasks.push({
+          name: '新しいタスク', phase, days: 3, priority: 'todo',
+          description: '', startDate: null, endDate: null, children: []
+        });
+        renderGanttByPhase();
+        syncMemberUI();
+      };
+      lPhaseRow.appendChild(phaseAddBtn);
+    }
     gtLeftBody.appendChild(lPhaseRow);
 
     // ── フェーズ行ドラッグ並び替え ──
@@ -4191,7 +4510,7 @@ function renderGanttByPhase() {
     });
 
     const rPhaseRow = document.createElement('div');
-    rPhaseRow.style.cssText = `width:${gridW}px;height:34px;background:var(--bg2);border-bottom:1px solid var(--border);position:relative;`;
+    rPhaseRow.style.cssText = `width:${gridW}px;height:34px;background:var(--bg2);border-bottom:1px solid var(--border);position:relative;overflow:visible;`;
     dates.forEach((dt, di) => {
       const off = isOffDay(dt); const isT = dt===today;
       const isMStart = dt.endsWith('-01')||dt===d.startDate;
@@ -4199,6 +4518,30 @@ function renderGanttByPhase() {
       cell.style.cssText = `position:absolute;left:${di*COL_W}px;top:0;width:${COL_W}px;height:100%;background:${isT?'rgba(91,78,245,0.06)':off?'rgba(0,0,0,0.03)':'var(--bg2)'};border-left:${isMStart?'1px solid var(--border2)':'none'};box-sizing:border-box;`;
       rPhaseRow.appendChild(cell);
     });
+    // タグラインスパン線（フェーズ内の最早〜最遅日を自動計算）
+    if (tasks.length) {
+      const allStarts = tasks.map(({t}) => t.startDate || d.startDate);
+      const allEnds   = tasks.map(({t}) => t.endDate || addDays(t.startDate || d.startDate, (t.days||1)-1));
+      const minStart  = allStarts.reduce((a,b) => a < b ? a : b);
+      const maxEnd    = allEnds.reduce((a,b) => a > b ? a : b);
+      const spanOff   = Math.max(0, daysBetween(d.startDate, minStart));
+      const spanDays  = Math.max(1, daysBetween(minStart, maxEnd) + 1);
+      const spanLeft  = spanOff * COL_W + 4;
+      const spanW     = Math.max(0, Math.min(spanDays * COL_W - 8, gridW - spanLeft));
+      const dotSize   = 7;
+      // 細い線
+      const spanLine = document.createElement('div');
+      spanLine.style.cssText = `position:absolute;left:${spanLeft + dotSize/2}px;top:50%;transform:translateY(-50%);width:${Math.max(0, spanW - dotSize)}px;height:2px;background:${phaseColor};opacity:0.75;pointer-events:none;z-index:4;`;
+      // 左端ドット
+      const dotL = document.createElement('div');
+      dotL.style.cssText = `position:absolute;left:${spanLeft}px;top:50%;transform:translateY(-50%);width:${dotSize}px;height:${dotSize}px;border-radius:50%;background:${phaseColor};opacity:0.9;pointer-events:none;z-index:5;`;
+      // 右端ドット
+      const dotR = document.createElement('div');
+      dotR.style.cssText = `position:absolute;left:${spanLeft + spanW - dotSize}px;top:50%;transform:translateY(-50%);width:${dotSize}px;height:${dotSize}px;border-radius:50%;background:${phaseColor};opacity:0.9;pointer-events:none;z-index:5;`;
+      rPhaseRow.appendChild(spanLine);
+      rPhaseRow.appendChild(dotL);
+      rPhaseRow.appendChild(dotR);
+    }
     gtRightBody.appendChild(rPhaseRow);
 
     if (!tasks.length) {
@@ -4271,28 +4614,29 @@ function renderGanttByPhase() {
     });
   });
 
-  // ── 最下部：フェーズ追加ボタン ──
-  const lAddPhase = document.createElement('div');
-  lAddPhase.style.cssText = `display:flex;align-items:center;padding:8px 14px;border-bottom:1px solid var(--border);`;
-  const addPhaseBtn = document.createElement('button');
-  addPhaseBtn.style.cssText = `display:flex;align-items:center;gap:6px;background:transparent;border:1px dashed var(--border2);border-radius:6px;padding:5px 14px;color:var(--text3);font-family:'DM Sans',sans-serif;font-size:11px;cursor:pointer;transition:all .15s;width:100%;`;
-  addPhaseBtn.innerHTML = `<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>タグラインを追加`;
-  addPhaseBtn.onmouseenter = function(){ this.style.borderColor='var(--accent)'; this.style.color='var(--accent)'; };
-  addPhaseBtn.onmouseleave = function(){ this.style.borderColor='var(--border2)'; this.style.color='var(--text3)'; };
-  addPhaseBtn.onclick = () => {
-    const name = prompt('新しいタグライン名を入力してください');
-    if (!name || !name.trim()) return;
-    const trimmed = name.trim();
-    if (d.phases.includes(trimmed)) return;
-    // d.phasesとPHASE_BAR_COLORSに追加
-    d.phases.push(trimmed);
-    const idx = Object.keys(PHASE_BAR_COLORS).length;
-    PHASE_BAR_COLORS[trimmed] = PHASE_DEFAULT_COLORS[idx % PHASE_DEFAULT_COLORS.length];
-    renderGanttByPhase();
-    renderPhaseLegend();
-  };
-  lAddPhase.appendChild(addPhaseBtn);
-  gtLeftBody.appendChild(lAddPhase);
+  // ── 最下部：フェーズ追加ボタン（ゲストモードでは非表示） ──
+  if (!isGuestMode) {
+    const lAddPhase = document.createElement('div');
+    lAddPhase.style.cssText = `display:flex;align-items:center;padding:8px 14px;border-bottom:1px solid var(--border);`;
+    const addPhaseBtn = document.createElement('button');
+    addPhaseBtn.style.cssText = `display:flex;align-items:center;gap:6px;background:transparent;border:1px dashed var(--border2);border-radius:6px;padding:5px 14px;color:var(--text3);font-family:'DM Sans',sans-serif;font-size:11px;cursor:pointer;transition:all .15s;width:100%;`;
+    addPhaseBtn.innerHTML = `<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>タグラインを追加`;
+    addPhaseBtn.onmouseenter = function(){ this.style.borderColor='var(--accent)'; this.style.color='var(--accent)'; };
+    addPhaseBtn.onmouseleave = function(){ this.style.borderColor='var(--border2)'; this.style.color='var(--text3)'; };
+    addPhaseBtn.onclick = () => {
+      const name = prompt('新しいタグライン名を入力してください');
+      if (!name || !name.trim()) return;
+      const trimmed = name.trim();
+      if (d.phases.includes(trimmed)) return;
+      d.phases.push(trimmed);
+      const idx = Object.keys(PHASE_BAR_COLORS).length;
+      PHASE_BAR_COLORS[trimmed] = PHASE_DEFAULT_COLORS[idx % PHASE_DEFAULT_COLORS.length];
+      renderGanttByPhase();
+      renderPhaseLegend();
+    };
+    lAddPhase.appendChild(addPhaseBtn);
+    gtLeftBody.appendChild(lAddPhase);
+  }
 
   const rAddPhase = document.createElement('div');
   rAddPhase.style.cssText = `width:${gridW}px;height:42px;border-bottom:1px solid var(--border);`;
@@ -4313,7 +4657,7 @@ function renderGantt() {
   assignTaskDates();
   renderPhaseLegend();
 
-  const COL_W = 28;
+  const COL_W = ganttColWidth;
   const ROW_H = 36;
   const LABEL_W = ganttLabelWidth;
   const today = toDateStr(new Date());
@@ -4371,27 +4715,23 @@ function renderGantt() {
             ${monthGroups.map(mg => `<div style="width:${mg.count*COL_W}px;min-width:${mg.count*COL_W}px;padding:4px 8px;font-family:'Syne',sans-serif;font-size:11px;font-weight:600;color:var(--text2);border-right:1px solid var(--border2);white-space:nowrap;box-sizing:border-box;background:var(--bg2);">${mg.label}</div>`).join('')}
           </div>
           <!-- 日行 -->
-          <div style="display:flex;width:${gridW}px;border-bottom:1px solid var(--border);">
+          <div style="display:flex;width:${gridW}px;border-bottom:1px solid var(--border);background:var(--bg2);">
             ${dates.map(dt => {
-              const off = isOffDay(dt);
               const isT = dt===today;
               const isMStart = dt.endsWith('-01')||dt===d.startDate;
-              const bg = isT ? 'rgba(91,78,245,0.08)' : off ? 'rgba(0,0,0,0.04)' : 'transparent';
               const col = isT ? 'var(--accent)' : 'var(--text3)';
-              return `<div style="width:${COL_W}px;min-width:${COL_W}px;text-align:center;font-family:'DM Mono',monospace;font-size:9px;padding:3px 0 1px;color:${col};opacity:${off&&!isT?.5:1};background:${bg};border-left:${isMStart?'1px solid var(--border2)':'none'};box-sizing:border-box;">${parseInt(dt.split('-')[2])}</div>`;
+              return `<div style="width:${COL_W}px;min-width:${COL_W}px;text-align:center;font-family:'DM Mono',monospace;font-size:9px;padding:3px 0 1px;color:${col};background:var(--bg2);border-left:${isMStart?'1px solid var(--border2)':'none'};box-sizing:border-box;overflow:hidden;">${COL_W>=14?parseInt(dt.split('-')[2]):''}</div>`;
             }).join('')}
           </div>
           <!-- 曜日行 -->
-          <div style="display:flex;width:${gridW}px;">
+          <div style="display:flex;width:${gridW}px;background:var(--bg2);">
             ${dates.map(dt => {
               const dow = parseDate(dt).getDay();
-              const off = isOffDay(dt);
               const isT = dt===today;
               const DOW_JP = ['日','月','火','水','木','金','土'];
               const isMStart = dt.endsWith('-01')||dt===d.startDate;
               const col = isT ? 'var(--accent)' : dow===0||isHoliday(dt) ? '#dc2626' : dow===6 ? '#2563eb' : 'var(--text3)';
-              const bg = isT ? 'rgba(91,78,245,0.06)' : off ? 'rgba(0,0,0,0.03)' : 'transparent';
-              return `<div style="width:${COL_W}px;min-width:${COL_W}px;text-align:center;font-family:'DM Mono',monospace;font-size:8px;padding:1px 0 3px;color:${col};opacity:${off&&!isT?.5:1};background:${bg};border-left:${isMStart?'1px solid var(--border2)':'none'};box-sizing:border-box;">${DOW_JP[dow]}</div>`;
+              return `<div style="width:${COL_W}px;min-width:${COL_W}px;text-align:center;font-family:'DM Mono',monospace;font-size:8px;padding:1px 0 3px;color:${col};background:var(--bg2);border-left:${isMStart?'1px solid var(--border2)':'none'};box-sizing:border-box;overflow:hidden;">${COL_W>=14?DOW_JP[dow]:''}</div>`;
             }).join('')}
           </div>
           <!-- 定例ラベルレーン -->
@@ -4447,15 +4787,19 @@ function renderGantt() {
 
     // フェーズヘッダー行（ドラッグハンドル付き）
     const lPhaseRow = document.createElement('div');
-    lPhaseRow.style.cssText = `display:flex;align-items:center;background:var(--bg2);border-bottom:1px solid var(--border);min-height:34px;padding:0 10px 0 6px;gap:6px;`;
+    lPhaseRow.style.cssText = `display:flex;align-items:center;background:var(--bg2);border-bottom:1px solid var(--border);height:34px;overflow:hidden;padding:0 10px 0 6px;gap:6px;`;
     lPhaseRow.setAttribute('data-phase-row', phase);
 
-    // ドラッグハンドル
+    // ドラッグハンドル（ゲストモードでは非表示）
     const phaseHandle = document.createElement('div');
-    phaseHandle.style.cssText = `width:14px;flex-shrink:0;cursor:grab;display:flex;flex-direction:column;gap:2px;align-items:center;justify-content:center;opacity:0.2;`;
-    phaseHandle.innerHTML = '<span style="display:block;width:10px;height:1.5px;background:var(--text3);border-radius:1px;"></span><span style="display:block;width:10px;height:1.5px;background:var(--text3);border-radius:1px;"></span><span style="display:block;width:10px;height:1.5px;background:var(--text3);border-radius:1px;"></span>';
-    lPhaseRow.addEventListener('mouseenter', () => phaseHandle.style.opacity = '0.5');
-    lPhaseRow.addEventListener('mouseleave', () => phaseHandle.style.opacity = '0.2');
+    if (isGuestMode) {
+      phaseHandle.style.cssText = `width:14px;flex-shrink:0;`;
+    } else {
+      phaseHandle.style.cssText = `width:14px;flex-shrink:0;cursor:grab;display:flex;flex-direction:column;gap:2px;align-items:center;justify-content:center;opacity:0.2;`;
+      phaseHandle.innerHTML = '<span style="display:block;width:10px;height:1.5px;background:var(--text3);border-radius:1px;"></span><span style="display:block;width:10px;height:1.5px;background:var(--text3);border-radius:1px;"></span><span style="display:block;width:10px;height:1.5px;background:var(--text3);border-radius:1px;"></span>';
+      lPhaseRow.addEventListener('mouseenter', () => phaseHandle.style.opacity = '0.5');
+      lPhaseRow.addEventListener('mouseleave', () => phaseHandle.style.opacity = '0.2');
+    }
 
     // フェーズ色・名前・＋ボタン
     const phaseDot = document.createElement('div');
@@ -4464,18 +4808,19 @@ function renderGantt() {
     phaseNameEl.style.cssText = `font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--text2);flex:1;`;
     phaseNameEl.textContent = phase;
 
-    const phaseAddBtn = document.createElement('button');
-    phaseAddBtn.textContent = '＋';
-    phaseAddBtn.title = 'スケジュールにタスクを追加';
-    phaseAddBtn.style.cssText = `background:transparent;border:1px dashed var(--border2);border-radius:4px;padding:1px 7px;color:var(--text3);font-size:11px;cursor:pointer;flex-shrink:0;transition:all .15s;`;
-    phaseAddBtn.onmouseenter = function(){ this.style.borderColor='var(--accent)'; this.style.color='var(--accent)'; };
-    phaseAddBtn.onmouseleave = function(){ this.style.borderColor='var(--border2)'; this.style.color='var(--text3)'; };
-    phaseAddBtn.onclick = function(e) { e.stopPropagation(); addScheduleItem(phase); };
-
     lPhaseRow.appendChild(phaseHandle);
     lPhaseRow.appendChild(phaseDot);
     lPhaseRow.appendChild(phaseNameEl);
-    lPhaseRow.appendChild(phaseAddBtn);
+    if (!isGuestMode) {
+      const phaseAddBtn = document.createElement('button');
+      phaseAddBtn.textContent = '＋';
+      phaseAddBtn.title = 'スケジュールにタスクを追加';
+      phaseAddBtn.style.cssText = `background:transparent;border:1px dashed var(--border2);border-radius:4px;padding:1px 7px;color:var(--text3);font-size:11px;cursor:pointer;flex-shrink:0;transition:all .15s;`;
+      phaseAddBtn.onmouseenter = function(){ this.style.borderColor='var(--accent)'; this.style.color='var(--accent)'; };
+      phaseAddBtn.onmouseleave = function(){ this.style.borderColor='var(--border2)'; this.style.color='var(--text3)'; };
+      phaseAddBtn.onclick = function(e) { e.stopPropagation(); addScheduleItem(phase); };
+      lPhaseRow.appendChild(phaseAddBtn);
+    }
     gtLeftBody.appendChild(lPhaseRow);
 
     // ── フェーズ行ドラッグ並び替え ──
@@ -4525,13 +4870,40 @@ function renderGantt() {
     });
 
     const rPhaseRow = document.createElement('div');
-    rPhaseRow.style.cssText = `width:${gridW}px;height:34px;background:var(--bg2);border-bottom:1px solid var(--border);position:relative;`;
+    rPhaseRow.style.cssText = `width:${gridW}px;height:34px;background:var(--bg2);border-bottom:1px solid var(--border);position:relative;overflow:visible;`;
     dates.forEach((dt,di)=>{
       const off=isOffDay(dt);const isT=dt===today;const isMStart=dt.endsWith('-01')||dt===d.startDate;
       const cell=document.createElement('div');
       cell.style.cssText=`position:absolute;left:${di*COL_W}px;top:0;width:${COL_W}px;height:100%;background:${isT?'rgba(91,78,245,0.06)':off?'rgba(0,0,0,0.03)':'var(--bg2)'};border-left:${isMStart?'1px solid var(--border2)':'none'};box-sizing:border-box;`;
       rPhaseRow.appendChild(cell);
     });
+    // タグラインスパン線（フェーズ内アイテムの最早〜最遅日）
+    if (phaseItems.length) {
+      const allItemStarts = phaseItems.map(it => it.startDate || d.startDate);
+      const allItemEnds   = phaseItems.map(it => it.endDate || addDays(it.startDate || d.startDate, (it.days||3)-1));
+      // 子タスクの日付も考慮
+      phaseItems.forEach(it => {
+        if (it.children && it.children.length) {
+          it.children.forEach(c => { if(c.startDate) allItemStarts.push(c.startDate); if(c.endDate) allItemEnds.push(c.endDate); });
+        }
+      });
+      const iMinStart = allItemStarts.reduce((a,b)=>a<b?a:b);
+      const iMaxEnd   = allItemEnds.reduce((a,b)=>a>b?a:b);
+      const iSpanOff  = Math.max(0, daysBetween(d.startDate, iMinStart));
+      const iSpanDays = Math.max(1, daysBetween(iMinStart, iMaxEnd)+1);
+      const iDotSize  = 7;
+      const iSpanLeft = iSpanOff * COL_W + 4;
+      const iSpanW    = Math.max(iDotSize+2, Math.min(iSpanDays * COL_W - 8, gridW - iSpanLeft));
+      const iSpanLine = document.createElement('div');
+      iSpanLine.style.cssText = `position:absolute;left:${iSpanLeft + iDotSize/2}px;top:50%;transform:translateY(-50%);width:${Math.max(0,iSpanW-iDotSize)}px;height:2px;background:${phaseColor};opacity:0.75;pointer-events:none;z-index:4;`;
+      const iDotL = document.createElement('div');
+      iDotL.style.cssText = `position:absolute;left:${iSpanLeft}px;top:50%;transform:translateY(-50%);width:${iDotSize}px;height:${iDotSize}px;border-radius:50%;background:${phaseColor};opacity:0.9;pointer-events:none;z-index:5;`;
+      const iDotR = document.createElement('div');
+      iDotR.style.cssText = `position:absolute;left:${iSpanLeft+iSpanW-iDotSize}px;top:50%;transform:translateY(-50%);width:${iDotSize}px;height:${iDotSize}px;border-radius:50%;background:${phaseColor};opacity:0.9;pointer-events:none;z-index:5;`;
+      rPhaseRow.appendChild(iSpanLine);
+      rPhaseRow.appendChild(iDotL);
+      rPhaseRow.appendChild(iDotR);
+    }
     gtRightBody.appendChild(rPhaseRow);
 
     if (!phaseItems.length) {
@@ -4554,56 +4926,73 @@ function renderGantt() {
       lRow.setAttribute('data-sched-id', item.id);
       lRow.setAttribute('data-sched-phase', phase);
 
-      // ドラッグハンドル
+      // ドラッグハンドル（ゲストモードでは非表示）
       const handle = document.createElement('div');
-      handle.style.cssText = `width:12px;flex-shrink:0;cursor:grab;display:flex;flex-direction:column;gap:2px;align-items:center;justify-content:center;opacity:0.25;`;
-      handle.innerHTML = '<span style="display:block;width:8px;height:1.5px;background:var(--text3);border-radius:1px;"></span><span style="display:block;width:8px;height:1.5px;background:var(--text3);border-radius:1px;"></span><span style="display:block;width:8px;height:1.5px;background:var(--text3);border-radius:1px;"></span>';
-      lRow.addEventListener('mouseenter', () => handle.style.opacity = '0.6');
-      lRow.addEventListener('mouseleave', () => handle.style.opacity = '0.25');
+      if (isGuestMode) {
+        handle.style.cssText = `width:12px;flex-shrink:0;`;
+      } else {
+        handle.style.cssText = `width:12px;flex-shrink:0;cursor:grab;display:flex;flex-direction:column;gap:2px;align-items:center;justify-content:center;opacity:0.25;`;
+        handle.innerHTML = '<span style="display:block;width:8px;height:1.5px;background:var(--text3);border-radius:1px;"></span><span style="display:block;width:8px;height:1.5px;background:var(--text3);border-radius:1px;"></span><span style="display:block;width:8px;height:1.5px;background:var(--text3);border-radius:1px;"></span>';
+        lRow.addEventListener('mouseenter', () => handle.style.opacity = '0.6');
+        lRow.addEventListener('mouseleave', () => handle.style.opacity = '0.25');
+      }
 
-      // タスク名（インライン編集）
+      // タスク名（ゲストモードでは読み取り専用）
       const nameEl = document.createElement('span');
-      nameEl.contentEditable = 'true';
-      nameEl.textContent = item.name;
-      nameEl.style.cssText = `font-size:11px;color:var(--text2);flex:1;outline:none;white-space:nowrap;overflow:hidden;cursor:text;min-width:0;`;
       const barLabelId = `bar-label-${item.id}`;
-      nameEl.addEventListener('input', () => { 
-        const v = nameEl.textContent.trim() || item.name;
-        item.name = v;
-        const bl = document.getElementById(barLabelId);
-        if (bl) bl.textContent = v;
-      });
-      nameEl.addEventListener('blur', () => renderGantt());
-      nameEl.addEventListener('keydown', e => { if(e.key==='Enter'){e.preventDefault();nameEl.blur();} });
+      if (isGuestMode) {
+        nameEl.textContent = item.name;
+        nameEl.style.cssText = `font-size:11px;color:var(--text2);flex:1;outline:none;white-space:nowrap;overflow:hidden;cursor:default;min-width:0;`;
+      } else {
+        nameEl.contentEditable = 'true';
+        nameEl.textContent = item.name;
+        nameEl.style.cssText = `font-size:11px;color:var(--text2);flex:1;outline:none;white-space:nowrap;overflow:hidden;cursor:text;min-width:0;`;
+        nameEl.addEventListener('input', () => {
+          const v = nameEl.textContent.trim() || item.name;
+          item.name = v;
+          const bl = document.getElementById(barLabelId);
+          if (bl) bl.textContent = v;
+        });
+        nameEl.addEventListener('blur', () => renderGantt());
+        nameEl.addEventListener('keydown', e => { if(e.key==='Enter'){e.preventDefault();nameEl.blur();} });
+      }
 
-      // ＋サブタスク
+      // ＋サブタスク（ゲストモードでは非表示）
       const addSubBtn = document.createElement('button');
       addSubBtn.type='button'; addSubBtn.textContent='＋サブ';
-      addSubBtn.style.cssText=`background:none;border:1px dashed var(--border2);border-radius:4px;color:var(--text3);cursor:pointer;font-size:9px;padding:1px 5px;flex-shrink:0;opacity:0;transition:opacity .15s;white-space:nowrap;`;
-      lRow.addEventListener('mouseenter',()=>addSubBtn.style.opacity='1');
-      lRow.addEventListener('mouseleave',()=>addSubBtn.style.opacity='0');
-      addSubBtn.onmouseenter=()=>{addSubBtn.style.borderColor='var(--accent)';addSubBtn.style.color='var(--accent)';};
-      addSubBtn.onmouseleave=()=>{addSubBtn.style.borderColor='var(--border2)';addSubBtn.style.color='var(--text3)';};
-      addSubBtn.onclick=e=>{
-        e.stopPropagation();
-        if(!item.children) item.children=[];
-        item.children.push({id:Date.now()+Math.random(),name:'サブタスク',phase:item.phase,days:2,startDate:null,endDate:null,children:[]});
-        assignScheduleDates(); renderGantt();
-      };
+      if (isGuestMode) {
+        addSubBtn.style.cssText=`display:none;`;
+      } else {
+        addSubBtn.style.cssText=`background:none;border:1px dashed var(--border2);border-radius:4px;color:var(--text3);cursor:pointer;font-size:9px;padding:1px 5px;flex-shrink:0;opacity:0;transition:opacity .15s;white-space:nowrap;`;
+        lRow.addEventListener('mouseenter',()=>addSubBtn.style.opacity='1');
+        lRow.addEventListener('mouseleave',()=>addSubBtn.style.opacity='0');
+        addSubBtn.onmouseenter=()=>{addSubBtn.style.borderColor='var(--accent)';addSubBtn.style.color='var(--accent)';};
+        addSubBtn.onmouseleave=()=>{addSubBtn.style.borderColor='var(--border2)';addSubBtn.style.color='var(--text3)';};
+        addSubBtn.onclick=e=>{
+          e.stopPropagation();
+          if(!item.children) item.children=[];
+          item.children.push({id:Date.now()+Math.random(),name:'サブタスク',phase:item.phase,days:2,startDate:null,endDate:null,children:[]});
+          assignScheduleDates(); renderGantt();
+        };
+      }
 
-      // × 削除
+      // × 削除（ゲストモードでは非表示）
       const delBtn = document.createElement('button');
       delBtn.type='button'; delBtn.textContent='×';
-      delBtn.style.cssText=`background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px;padding:0 2px;flex-shrink:0;opacity:0;transition:opacity .15s;`;
-      lRow.addEventListener('mouseenter',()=>delBtn.style.opacity='1');
-      lRow.addEventListener('mouseleave',()=>delBtn.style.opacity='0');
-      delBtn.onmouseenter=()=>delBtn.style.color='#dc2626';
-      delBtn.onmouseleave=()=>delBtn.style.color='var(--text3)';
-      delBtn.onclick=e=>{
-        e.stopPropagation();
-        d.scheduleItems.splice(d.scheduleItems.indexOf(item),1);
-        renderGantt();
-      };
+      if (isGuestMode) {
+        delBtn.style.cssText=`display:none;`;
+      } else {
+        delBtn.style.cssText=`background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px;padding:0 2px;flex-shrink:0;opacity:0;transition:opacity .15s;`;
+        lRow.addEventListener('mouseenter',()=>delBtn.style.opacity='1');
+        lRow.addEventListener('mouseleave',()=>delBtn.style.opacity='0');
+        delBtn.onmouseenter=()=>delBtn.style.color='#dc2626';
+        delBtn.onmouseleave=()=>delBtn.style.color='var(--text3)';
+        delBtn.onclick=e=>{
+          e.stopPropagation();
+          d.scheduleItems.splice(d.scheduleItems.indexOf(item),1);
+          renderGantt();
+        };
+      }
 
       // ── アコーディオン折りたたみ（子タスクがある場合のみ） ──
       const hasChildren = item.children && item.children.length > 0;
@@ -4699,44 +5088,14 @@ function renderGantt() {
 
       const bar = document.createElement('div');
       bar.setAttribute('data-phase',phase);
-      bar.style.cssText=`position:absolute;left:${effectiveOff*COL_W+1}px;top:6px;width:${Math.max(4,effectiveBarW)}px;height:${ROW_H-12}px;background:${phaseColor}dd;border-radius:99px;box-sizing:border-box;overflow:visible;cursor:grab;user-select:none;`;
+      bar.style.cssText=`position:absolute;left:${effectiveOff*COL_W+1}px;top:6px;width:${Math.max(4,effectiveBarW)}px;height:${ROW_H-12}px;background:${phaseColor}dd;border-radius:99px;box-sizing:border-box;overflow:hidden;cursor:${isGuestMode?'default':'grab'};user-select:none;`;
 
-      // バーのテキストはバーの右横に表示
+      // バーのテキストはバー外（右横）に表示
       const barLabel=document.createElement('span');
       barLabel.id = barLabelId;
       barLabel.style.cssText=`position:absolute;left:${effectiveOff*COL_W+1+Math.max(4,effectiveBarW)+6}px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text2);white-space:nowrap;font-family:'DM Sans',sans-serif;pointer-events:none;`;
       barLabel.textContent=item.name;
       rRow.appendChild(barLabel);
-
-      // リサイズハンドル（左端）
-      const resizeHandleLeft = document.createElement('div');
-      resizeHandleLeft.style.cssText=`position:absolute;left:0;top:0;width:10px;height:100%;cursor:ew-resize;background:rgba(255,255,255,0.25);border-radius:99px 0 0 99px;z-index:3;`;
-      bar.appendChild(resizeHandleLeft);
-      resizeHandleLeft.addEventListener('mousedown', ev => {
-        ev.preventDefault(); ev.stopPropagation();
-        const startX = ev.clientX;
-        const origLeft = parseInt(bar.style.left);
-        const origWidth = parseInt(bar.style.width);
-        const onMove = ev2 => {
-          const dx = ev2.clientX - startX;
-          const newLeft = Math.max(0, Math.round((origLeft + dx) / COL_W) * COL_W);
-          const newWidth = Math.max(COL_W, origWidth + (origLeft - newLeft));
-          bar.style.left = newLeft + 'px';
-          bar.style.width = newWidth + 'px';
-          if (barLabel) barLabel.style.left = (newLeft + newWidth + 6) + 'px';
-          item.startDate = addDays(d.startDate, Math.round(newLeft / COL_W));
-          item.days = Math.round(newWidth / COL_W);
-          item.endDate = addDays(item.startDate, item.days - 1);
-          if (ttName) { ttName.textContent = item.name; ttDates.textContent = `${item.startDate} 〜 ${item.endDate}（${item.days}日）`; tooltip.style.display='block'; }
-        };
-        const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); if (tooltip) tooltip.style.display='none'; renderGantt(); };
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onUp);
-      });
-      // リサイズハンドル（右端）
-      const resizeHandle = document.createElement('div');
-      resizeHandle.style.cssText=`position:absolute;right:0;top:0;width:10px;height:100%;cursor:ew-resize;background:rgba(255,255,255,0.25);border-radius:0 3px 3px 0;z-index:3;`;
-      bar.appendChild(resizeHandle);
 
       // ツールチップ
       const tooltip=container.querySelector('#gt-tooltip');
@@ -4746,72 +5105,99 @@ function renderGantt() {
       bar.addEventListener('mousemove',e=>{ tooltip.style.left=(e.clientX+12)+'px'; tooltip.style.top=(e.clientY-10)+'px'; });
       bar.addEventListener('mouseleave',()=>{ tooltip.style.display='none'; });
 
-      // ── バードラッグ移動（グリッドスナップ・ずれなし）──
-      bar.addEventListener('mousedown', e => {
-        if (e.target === resizeHandle) return;
-        e.preventDefault();
-        tooltip.style.display='none';
-        bar.style.cursor='grabbing';
-        const origLeft = parseInt(bar.style.left);
-        // マウスがバー内のどのcolにいるかを計算してスナップ基準点を決定
-        const barRect  = bar.getBoundingClientRect();
-        const mouseColInBar = Math.floor((e.clientX - barRect.left) / COL_W);
-        const snapBaseX = e.clientX - (e.clientX - barRect.left) % COL_W;
-        const startX = snapBaseX;
-        let lastDelta = 0;
-        const onMove = ev => {
-          const dx       = ev.clientX - startX;
-          const colDelta = Math.round(dx / COL_W);
-          lastDelta      = colDelta;
-          const newLeft  = Math.max(0, origLeft + colDelta * COL_W);
-          bar.style.left = newLeft + 'px';
-          if (barLabel) barLabel.style.left = (newLeft + parseInt(bar.style.width) + 6) + 'px';
-        };
-        const onUp = () => {
-          bar.style.cursor = 'grab';
-          document.removeEventListener('mousemove', onMove);
-          document.removeEventListener('mouseup', onUp);
-          if (lastDelta === 0) return;
-          item.startDate = addDays(effectiveStart, lastDelta);
-          item.endDate   = addDays(effectiveEnd,   lastDelta);
-          item.days = Math.max(1, daysBetween(item.startDate, item.endDate) + 1);
-          if (item.children) item.children.forEach(c => {
-            if (c.startDate) c.startDate = addDays(c.startDate, lastDelta);
-            if (c.endDate)   c.endDate   = addDays(c.endDate,   lastDelta);
-          });
-          renderGantt();
-        };
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onUp);
-      });
+      if (!isGuestMode) {
+        // リサイズハンドル（左端・丸ドット）
+        const resizeHandleLeft = document.createElement('div');
+        resizeHandleLeft.style.cssText=`position:absolute;left:-5px;top:50%;transform:translateY(-50%);width:10px;height:10px;border-radius:50%;background:#fff;opacity:0.9;cursor:ew-resize;z-index:3;box-shadow:0 0 0 2px rgba(0,0,0,0.15);`;
+        bar.appendChild(resizeHandleLeft);
+        resizeHandleLeft.addEventListener('mousedown', ev => {
+          ev.preventDefault(); ev.stopPropagation();
+          const startX = ev.clientX;
+          const origLeft = parseInt(bar.style.left);
+          const origWidth = parseInt(bar.style.width);
+          const onMove = ev2 => {
+            const dx = ev2.clientX - startX;
+            const newLeft = Math.max(0, Math.round((origLeft + dx) / COL_W) * COL_W);
+            const newWidth = Math.max(COL_W, origWidth + (origLeft - newLeft));
+            bar.style.left = newLeft + 'px';
+            bar.style.width = newWidth + 'px';
+            item.startDate = addDays(d.startDate, Math.round(newLeft / COL_W));
+            item.days = Math.round(newWidth / COL_W);
+            item.endDate = addDays(item.startDate, item.days - 1);
+            if (ttName) { ttName.textContent = item.name; ttDates.textContent = `${item.startDate} 〜 ${item.endDate}（${item.days}日）`; tooltip.style.display='block'; }
+          };
+          const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); if (tooltip) tooltip.style.display='none'; renderGantt(); };
+          document.addEventListener('mousemove', onMove);
+          document.addEventListener('mouseup', onUp);
+        });
 
-      // ── バーリサイズ（右端） ──
-      resizeHandle.addEventListener('mousedown', e => {
-        e.preventDefault(); e.stopPropagation();
-        const startX = e.clientX;
-        const origWidth = parseInt(bar.style.width);
-        const onMove = ev => {
-          const newW = Math.max(COL_W, origWidth + Math.round((ev.clientX-startX)/COL_W)*COL_W);
-          bar.style.width = newW + 'px';
-          if (barLabel) barLabel.style.left = (parseInt(bar.style.left) + newW + 6) + 'px';
-        };
-        const onUp = ev => {
-          document.removeEventListener('mousemove', onMove);
-          document.removeEventListener('mouseup', onUp);
-          const newW = parseInt(bar.style.width);
-          const newDays = Math.max(1, Math.round((newW + 2) / COL_W));
-          // effectiveStart基準でendDateを確定（子タスクによるずれを防ぐ）
-          const eStart = effectiveStart;
-          const newEndDate = addDays(eStart, newDays - 1);
-          if (newEndDate === item.endDate && newDays === item.days) return;
-          item.startDate = eStart; // 明示的に保存してassignScheduleDatesの再計算を防ぐ
-          item.endDate   = newEndDate;
-          item.days      = newDays;
-          renderGantt();
-        };
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onUp);
-      });
+        // リサイズハンドル（右端・丸ドット）
+        const resizeHandle = document.createElement('div');
+        resizeHandle.style.cssText=`position:absolute;right:-5px;top:50%;transform:translateY(-50%);width:10px;height:10px;border-radius:50%;background:#fff;opacity:0.9;cursor:ew-resize;z-index:3;box-shadow:0 0 0 2px rgba(0,0,0,0.15);`;
+        bar.appendChild(resizeHandle);
+
+        // ── バードラッグ移動（グリッドスナップ・ずれなし）──
+        bar.addEventListener('mousedown', e => {
+          if (e.target === resizeHandle) return;
+          e.preventDefault();
+          tooltip.style.display='none';
+          bar.style.cursor='grabbing';
+          const origLeft = parseInt(bar.style.left);
+          const barRect  = bar.getBoundingClientRect();
+          const snapBaseX = e.clientX - (e.clientX - barRect.left) % COL_W;
+          const startX = snapBaseX;
+          let lastDelta = 0;
+          const onMove = ev => {
+            const dx       = ev.clientX - startX;
+            const colDelta = Math.round(dx / COL_W);
+            lastDelta      = colDelta;
+            const newLeft  = Math.max(0, origLeft + colDelta * COL_W);
+            bar.style.left = newLeft + 'px';
+          };
+          const onUp = () => {
+            bar.style.cursor = 'grab';
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            if (lastDelta === 0) return;
+            item.startDate = addDays(effectiveStart, lastDelta);
+            item.endDate   = addDays(effectiveEnd,   lastDelta);
+            item.days = Math.max(1, daysBetween(item.startDate, item.endDate) + 1);
+            if (item.children) item.children.forEach(c => {
+              if (c.startDate) c.startDate = addDays(c.startDate, lastDelta);
+              if (c.endDate)   c.endDate   = addDays(c.endDate,   lastDelta);
+            });
+            renderGantt();
+          };
+          document.addEventListener('mousemove', onMove);
+          document.addEventListener('mouseup', onUp);
+        });
+
+        // ── バーリサイズ（右端） ──
+        resizeHandle.addEventListener('mousedown', e => {
+          e.preventDefault(); e.stopPropagation();
+          const startX = e.clientX;
+          const origWidth = parseInt(bar.style.width);
+          const onMove = ev => {
+            const newW = Math.max(COL_W, origWidth + Math.round((ev.clientX-startX)/COL_W)*COL_W);
+            bar.style.width = newW + 'px';
+          };
+          const onUp = ev => {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            const newW = parseInt(bar.style.width);
+            const newDays = Math.max(1, Math.round((newW + 2) / COL_W));
+            const eStart = effectiveStart;
+            const newEndDate = addDays(eStart, newDays - 1);
+            if (newEndDate === item.endDate && newDays === item.days) return;
+            item.startDate = eStart;
+            item.endDate   = newEndDate;
+            item.days      = newDays;
+            renderGantt();
+          };
+          document.addEventListener('mousemove', onMove);
+          document.addEventListener('mouseup', onUp);
+        });
+      }
 
       rRow.appendChild(bar);
 
@@ -4825,50 +5211,56 @@ function renderGantt() {
       }
     });
 
-    // ── フェーズ末尾：タスク追加ボタン行 ──
+    // ── フェーズ末尾：タスク追加ボタン行（ゲストモードでは非表示） ──
     const lAddRow = document.createElement('div');
-    lAddRow.style.cssText = `display:flex;align-items:center;padding:4px 10px;border-bottom:1px solid var(--border);min-height:32px;`;
-    const addItemBtn = document.createElement('button');
-    addItemBtn.style.cssText = `display:flex;align-items:center;gap:5px;background:transparent;border:1px dashed var(--border2);border-radius:5px;padding:3px 10px;color:var(--text3);font-family:'DM Sans',sans-serif;font-size:11px;cursor:pointer;transition:all .15s;width:100%;`;
-    addItemBtn.innerHTML = `<svg width="9" height="9" viewBox="0 0 10 10" fill="none"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>タスクを追加`;
-    addItemBtn.onmouseenter = function(){ this.style.borderColor=phaseColor; this.style.color=phaseColor; };
-    addItemBtn.onmouseleave = function(){ this.style.borderColor='var(--border2)'; this.style.color='var(--text3)'; };
-    addItemBtn.onclick = e => { e.stopPropagation(); addScheduleItem(phase); };
-    lAddRow.appendChild(addItemBtn);
+    lAddRow.style.cssText = `display:flex;align-items:center;padding:4px 10px;border-bottom:1px solid var(--border);min-height:${isGuestMode?'0':'32px'};${isGuestMode?'display:none;':''}`;
+    if (!isGuestMode) {
+      const addItemBtn = document.createElement('button');
+      addItemBtn.style.cssText = `display:flex;align-items:center;gap:5px;background:transparent;border:1px dashed var(--border2);border-radius:5px;padding:3px 10px;color:var(--text3);font-family:'DM Sans',sans-serif;font-size:11px;cursor:pointer;transition:all .15s;width:100%;`;
+      addItemBtn.innerHTML = `<svg width="9" height="9" viewBox="0 0 10 10" fill="none"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>タスクを追加`;
+      addItemBtn.onmouseenter = function(){ this.style.borderColor=phaseColor; this.style.color=phaseColor; };
+      addItemBtn.onmouseleave = function(){ this.style.borderColor='var(--border2)'; this.style.color='var(--text3)'; };
+      addItemBtn.onclick = e => { e.stopPropagation(); addScheduleItem(phase); };
+      lAddRow.appendChild(addItemBtn);
+    }
     gtLeftBody.appendChild(lAddRow);
 
     const rAddRow = document.createElement('div');
-    rAddRow.style.cssText = `width:${gridW}px;min-height:32px;border-bottom:1px solid var(--border);position:relative;overflow:hidden;`;
-    dates.forEach((dt,di)=>{
-      const off=isOffDay(dt); const isT=dt===today; const isMStart=dt.endsWith('-01')||dt===d.startDate;
-      const acell=document.createElement('div');
-      acell.style.cssText=`position:absolute;left:${di*COL_W}px;top:0;width:${COL_W}px;height:100%;background:${isT?'rgba(91,78,245,0.04)':off?'rgba(0,0,0,0.025)':'transparent'};border-left:${isMStart?'1px solid var(--border2)':'none'};box-sizing:border-box;`;
-      rAddRow.appendChild(acell);
-    });
+    rAddRow.style.cssText = `width:${gridW}px;min-height:${isGuestMode?'0':'32px'};${isGuestMode?'display:none;':''}border-bottom:1px solid var(--border);position:relative;overflow:hidden;`;
+    if (!isGuestMode) {
+      dates.forEach((dt,di)=>{
+        const off=isOffDay(dt); const isT=dt===today; const isMStart=dt.endsWith('-01')||dt===d.startDate;
+        const acell=document.createElement('div');
+        acell.style.cssText=`position:absolute;left:${di*COL_W}px;top:0;width:${COL_W}px;height:100%;background:${isT?'rgba(91,78,245,0.04)':off?'rgba(0,0,0,0.025)':'transparent'};border-left:${isMStart?'1px solid var(--border2)':'none'};box-sizing:border-box;`;
+        rAddRow.appendChild(acell);
+      });
+    }
     gtRightBody.appendChild(rAddRow);
   });
 
-  // ── 最下部：タグライン追加ボタン ──
-  const lAddPhase = document.createElement('div');
-  lAddPhase.style.cssText = `display:flex;align-items:center;padding:8px 14px;`;
-  const addPhaseBtn = document.createElement('button');
-  addPhaseBtn.style.cssText = `display:flex;align-items:center;gap:6px;background:transparent;border:1px dashed var(--border2);border-radius:6px;padding:6px 14px;color:var(--text3);font-family:'DM Sans',sans-serif;font-size:11px;cursor:pointer;transition:all .15s;width:100%;`;
-  addPhaseBtn.innerHTML = `<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>タグラインを追加`;
-  addPhaseBtn.onmouseenter = function(){ this.style.borderColor='var(--accent)'; this.style.color='var(--accent)'; };
-  addPhaseBtn.onmouseleave = function(){ this.style.borderColor='var(--border2)'; this.style.color='var(--text3)'; };
-  addPhaseBtn.onclick = () => {
-    const name = prompt('新しいタグライン名を入力してください');
-    if (!name || !name.trim()) return;
-    const trimmed = name.trim();
-    if (d.phases.includes(trimmed)) { alert('同じ名前のタグラインがすでに存在します'); return; }
-    d.phases.push(trimmed);
-    const idx = Object.keys(PHASE_BAR_COLORS).length;
-    PHASE_BAR_COLORS[trimmed] = PHASE_DEFAULT_COLORS[idx % PHASE_DEFAULT_COLORS.length];
-    renderGantt();
-    renderPhaseLegend();
-  };
-  lAddPhase.appendChild(addPhaseBtn);
-  gtLeftBody.appendChild(lAddPhase);
+  // ── 最下部：タグライン追加ボタン（ゲストモードでは非表示） ──
+  if (!isGuestMode) {
+    const lAddPhase = document.createElement('div');
+    lAddPhase.style.cssText = `display:flex;align-items:center;padding:8px 14px;`;
+    const addPhaseBtn = document.createElement('button');
+    addPhaseBtn.style.cssText = `display:flex;align-items:center;gap:6px;background:transparent;border:1px dashed var(--border2);border-radius:6px;padding:6px 14px;color:var(--text3);font-family:'DM Sans',sans-serif;font-size:11px;cursor:pointer;transition:all .15s;width:100%;`;
+    addPhaseBtn.innerHTML = `<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>タグラインを追加`;
+    addPhaseBtn.onmouseenter = function(){ this.style.borderColor='var(--accent)'; this.style.color='var(--accent)'; };
+    addPhaseBtn.onmouseleave = function(){ this.style.borderColor='var(--border2)'; this.style.color='var(--text3)'; };
+    addPhaseBtn.onclick = () => {
+      const name = prompt('新しいタグライン名を入力してください');
+      if (!name || !name.trim()) return;
+      const trimmed = name.trim();
+      if (d.phases.includes(trimmed)) { alert('同じ名前のタグラインがすでに存在します'); return; }
+      d.phases.push(trimmed);
+      const idx = Object.keys(PHASE_BAR_COLORS).length;
+      PHASE_BAR_COLORS[trimmed] = PHASE_DEFAULT_COLORS[idx % PHASE_DEFAULT_COLORS.length];
+      renderGantt();
+      renderPhaseLegend();
+    };
+    lAddPhase.appendChild(addPhaseBtn);
+    gtLeftBody.appendChild(lAddPhase);
+  }
   const rAddPhase = document.createElement('div');
   rAddPhase.style.cssText = `width:${gridW}px;height:42px;`;
   gtRightBody.appendChild(rAddPhase);
@@ -5002,9 +5394,9 @@ function makeTaskRowPair(mi, ti, dates, d, COL_W, ROW_H, LABEL_W, memberColor) {
 
   const barH = hasChildren ? 14 : 22;
   const bar = document.createElement('div');
-  bar.style.cssText=`position:absolute;height:${barH}px;top:50%;transform:translateY(-50%);border-radius:5px;background:${barColor};left:${startOff*COL_W+1}px;width:${barDays*COL_W-2}px;display:flex;align-items:center;padding:0 6px;cursor:grab;user-select:none;box-sizing:border-box;z-index:2;transition:box-shadow .15s;opacity:${hasChildren?'.75':'1'};`;
+  bar.style.cssText=`position:absolute;height:${barH}px;top:50%;transform:translateY(-50%);border-radius:5px;background:${barColor};left:${startOff*COL_W+1}px;width:${barDays*COL_W-2}px;display:flex;align-items:center;padding:0 6px;cursor:grab;user-select:none;box-sizing:border-box;z-index:2;transition:box-shadow .15s;opacity:${hasChildren?'.75':'1'};overflow:visible;`;
   bar.dataset.phase=t.phase;
-  bar.innerHTML=`<div class="gantt-bar-resize-left" style="position:absolute;left:0;top:0;bottom:0;width:9px;cursor:ew-resize;border-radius:5px 0 0 5px;background:rgba(255,255,255,.25);"></div><span style="font-size:10px;color:rgba(255,255,255,.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;flex:1;padding-left:4px;">${t.name}</span><div class="gantt-bar-resize" style="position:absolute;right:0;top:0;bottom:0;width:7px;cursor:ew-resize;border-radius:0 5px 5px 0;background:rgba(255,255,255,.15);"></div>`;
+  bar.innerHTML=`<div class="gantt-bar-resize-left" style="position:absolute;left:-4px;top:50%;transform:translateY(-50%);width:9px;height:9px;border-radius:50%;background:#fff;opacity:0.88;cursor:ew-resize;z-index:3;box-shadow:0 0 0 1.5px rgba(0,0,0,0.12);"></div><span style="font-size:10px;color:rgba(255,255,255,.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;flex:1;padding-left:4px;">${t.name}</span><div class="gantt-bar-resize" style="position:absolute;right:-4px;top:50%;transform:translateY(-50%);width:9px;height:9px;border-radius:50%;background:#fff;opacity:0.88;cursor:ew-resize;z-index:3;box-shadow:0 0 0 1.5px rgba(0,0,0,0.12);"></div>`;
   bar.addEventListener('mouseenter',()=>bar.style.boxShadow='0 2px 10px rgba(0,0,0,.4)');
   bar.addEventListener('mouseleave',()=>bar.style.boxShadow='none');
   rRow.appendChild(bar);
@@ -6403,6 +6795,7 @@ function renderMemberPanelBody() {}
 
 // ─── PROJECT RAIL ───
 function toggleProjectRail() {
+  if (GOOGLE_CLIENT_ID && !googleUser) { showAuthModal(); return; }
   const panel = document.getElementById('proj-rail-panel');
   const overlay = document.getElementById('proj-rail-overlay');
   const isOpen = panel.style.left === '54px';
