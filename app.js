@@ -731,6 +731,10 @@ function loadSnapshot(id) {
   generatedData      = snap.data;
   recurringList      = snap.recurring || [];
   selectedCategories = snap.categories || [];
+  // 保存済みフェーズカラーを復元
+  if (generatedData?.phaseColors) {
+    Object.assign(PHASE_BAR_COLORS, generatedData.phaseColors);
+  }
   renderResult(true); // スケジュール日付を保持する
   showPanel(2);
   // 現在のタブを維持
@@ -3517,9 +3521,11 @@ function initPhaseBarColors() {
   const allPhases = [...phases].filter(p => !_deletedPhases.has(p));
   usedPhases.forEach(p => { if (!allPhases.includes(p)) allPhases.push(p); });
 
+  // 保存済みのカスタム色を優先して復元
+  const savedColors = generatedData?.phaseColors || {};
   const newColors = {};
   allPhases.forEach((p, i) => {
-    newColors[p] = PHASE_BAR_COLORS[p] || PHASE_DEFAULT_COLORS[i % PHASE_DEFAULT_COLORS.length];
+    newColors[p] = savedColors[p] || PHASE_BAR_COLORS[p] || PHASE_DEFAULT_COLORS[i % PHASE_DEFAULT_COLORS.length];
   });
   PHASE_BAR_COLORS = newColors;
 }
@@ -3555,7 +3561,12 @@ function openPhasePicker(phase, swatchEl) {
     if (sw) sw.style.background = picker.value;
     document.querySelectorAll('[data-phase="'+p+'"]').forEach(b => b.style.background = picker.value);
   };
-  picker.onchange = () => renderGantt();
+  picker.onchange = () => {
+    // 変更した色を generatedData に永続化してからスナップショット保存
+    if (generatedData) generatedData.phaseColors = { ...PHASE_BAR_COLORS };
+    renderGantt();
+    saveSnapshot();
+  };
   picker.click();
 }
 
