@@ -1231,7 +1231,7 @@ function renderDashboard() {
 
 // 単体花SVG（ボードに浮かぶ用・背景なし）
 function makeFlowerSvg(d) {
-  const W = 130, H = 222;
+  const W = 130, H = 250;
 
   function hashCode(str) {
     let h = 0;
@@ -1263,9 +1263,9 @@ function makeFlowerSvg(d) {
 
   // レイアウト寸法
   const cx    = W / 2;         // 水平中心
-  const cy    = 52;            // 花の中心Y
-  const vTop  = 120;           // 花瓶の口Y
-  const vBot  = 200;           // 花瓶の底Y
+  const cy    = 72;            // 花の中心Y（上に余白を確保してホバー時に切れない）
+  const vTop  = 152;           // 花瓶の口Y（茎を長く）
+  const vBot  = 228;           // 花瓶の底Y
   const tilt  = ((seed % 9) - 4) * 1.6;  // 自然な傾き
 
   // ── 茎（花頭下〜花瓶の口の少し中まで） ──
@@ -2940,60 +2940,65 @@ function makeChildRowPair(mi, path, t, dates, d, COL_W, ROW_H, LABEL_W, depth) {
 
   const nameSpan = document.createElement('span');
   nameSpan.textContent = t.name;
-  nameSpan.style.cssText = `font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;cursor:text;`;
-  nameSpan.title = 'クリックで編集';
-  nameSpan.addEventListener('click', () => {
-    const input = document.createElement('input');
-    input.type='text'; input.value=t.name;
-    input.style.cssText=`flex:1;background:var(--bg3);border:1px solid var(--accent);border-radius:4px;padding:2px 6px;font-size:11px;color:var(--text);font-family:'DM Sans',sans-serif;outline:none;min-width:0;`;
-    nameSpan.replaceWith(input); input.focus(); input.select();
-    const commit = () => {
-      const v = input.value.trim() || t.name;
-      getTaskByPath(mi, path).name = v;
-      nameSpan.textContent = v;
-      input.replaceWith(nameSpan);
-      // バーラベルも更新
-      const barLabel = rRow.querySelector('span');
-      if (barLabel) barLabel.textContent = v;
-    };
-    input.addEventListener('blur', commit);
-    input.addEventListener('keydown', e2 => { if(e2.key==='Enter'){e2.preventDefault();input.blur();} if(e2.key==='Escape'){input.value=t.name;input.blur();} });
-  });
-
-  // サブタスク追加ボタン（深さ2まで）
-  const addSubBtn = document.createElement('button');
-  addSubBtn.title = 'サブタスクを追加';
-  addSubBtn.style.cssText = `flex-shrink:0;background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;line-height:1;padding:1px 3px;border-radius:3px;transition:all .15s;opacity:0.2;`;
-  addSubBtn.textContent = '＋';
-  addSubBtn.addEventListener('mouseenter', () => { addSubBtn.style.color='var(--accent)'; addSubBtn.style.opacity='1'; });
-  addSubBtn.addEventListener('mouseleave', () => { addSubBtn.style.color='var(--text3)'; addSubBtn.style.opacity='0.2'; });
-  addSubBtn.addEventListener('click', e => {
-    e.stopPropagation();
-    const task = getTaskByPath(mi, path);
-    if (!task.children) task.children = [];
-    task.children.push({ name:'サブタスク', phase:task.phase, days:1, priority:'todo', description:'', children:[], startDate:null, endDate:null });
-    renderGantt();
-    syncMemberUI();
-  });
-
-  // 削除ボタン
-  const delBtn = document.createElement('button');
-  delBtn.title = '削除';
-  delBtn.style.cssText = `flex-shrink:0;background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;line-height:1;padding:1px 3px;border-radius:3px;transition:all .15s;opacity:0.2;`;
-  delBtn.textContent = '×';
-  delBtn.addEventListener('mouseenter', () => { delBtn.style.color='#dc2626'; delBtn.style.opacity='1'; });
-  delBtn.addEventListener('mouseleave', () => { delBtn.style.color='var(--text3)'; delBtn.style.opacity='0.2'; });
-  delBtn.addEventListener('click', e => {
-    e.stopPropagation();
-    removeTaskByPath(mi, path);
-    renderGantt();
-    syncMemberUI();
-  });
+  nameSpan.style.cssText = `font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;cursor:${isGuestMode?'default':'text'};`;
+  if (!isGuestMode) {
+    nameSpan.title = 'クリックで編集';
+    nameSpan.addEventListener('click', () => {
+      const input = document.createElement('input');
+      input.type='text'; input.value=t.name;
+      input.style.cssText=`flex:1;background:var(--bg3);border:1px solid var(--accent);border-radius:4px;padding:2px 6px;font-size:11px;color:var(--text);font-family:'DM Sans',sans-serif;outline:none;min-width:0;`;
+      nameSpan.replaceWith(input); input.focus(); input.select();
+      const commit = () => {
+        const v = input.value.trim() || t.name;
+        getTaskByPath(mi, path).name = v;
+        nameSpan.textContent = v;
+        input.replaceWith(nameSpan);
+        const barLabel = rRow.querySelector('span');
+        if (barLabel) barLabel.textContent = v;
+      };
+      input.addEventListener('blur', commit);
+      input.addEventListener('keydown', e2 => { if(e2.key==='Enter'){e2.preventDefault();input.blur();} if(e2.key==='Escape'){input.value=t.name;input.blur();} });
+    });
+  }
 
   lRow.appendChild(dot);
   lRow.appendChild(nameSpan);
-  if (depth < 2) lRow.appendChild(addSubBtn);
-  lRow.appendChild(delBtn);
+
+  if (!isGuestMode) {
+    // サブタスク追加ボタン（深さ2まで）
+    if (depth < 2) {
+      const addSubBtn = document.createElement('button');
+      addSubBtn.title = 'サブタスクを追加';
+      addSubBtn.style.cssText = `flex-shrink:0;background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;line-height:1;padding:1px 3px;border-radius:3px;transition:all .15s;opacity:0.2;`;
+      addSubBtn.textContent = '＋';
+      addSubBtn.addEventListener('mouseenter', () => { addSubBtn.style.color='var(--accent)'; addSubBtn.style.opacity='1'; });
+      addSubBtn.addEventListener('mouseleave', () => { addSubBtn.style.color='var(--text3)'; addSubBtn.style.opacity='0.2'; });
+      addSubBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        const task = getTaskByPath(mi, path);
+        if (!task.children) task.children = [];
+        task.children.push({ name:'サブタスク', phase:task.phase, days:1, priority:'todo', description:'', children:[], startDate:null, endDate:null });
+        renderGantt();
+        syncMemberUI();
+      });
+      lRow.appendChild(addSubBtn);
+    }
+
+    // 削除ボタン
+    const delBtn = document.createElement('button');
+    delBtn.title = '削除';
+    delBtn.style.cssText = `flex-shrink:0;background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;line-height:1;padding:1px 3px;border-radius:3px;transition:all .15s;opacity:0.2;`;
+    delBtn.textContent = '×';
+    delBtn.addEventListener('mouseenter', () => { delBtn.style.color='#dc2626'; delBtn.style.opacity='1'; });
+    delBtn.addEventListener('mouseleave', () => { delBtn.style.color='var(--text3)'; delBtn.style.opacity='0.2'; });
+    delBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      removeTaskByPath(mi, path);
+      renderGantt();
+      syncMemberUI();
+    });
+    lRow.appendChild(delBtn);
+  }
 
   // ── 右行（グリッド＋バー）──
   const rRow = document.createElement('div');
@@ -3009,28 +3014,30 @@ function makeChildRowPair(mi, path, t, dates, d, COL_W, ROW_H, LABEL_W, depth) {
 
   // バー本体
   const bar = document.createElement('div');
-  bar.style.cssText = `position:absolute;height:16px;top:50%;transform:translateY(-50%);border-radius:4px;background:${barColor};opacity:.8;left:${startOff*COL_W+1}px;width:${barDays*COL_W-2}px;display:flex;align-items:center;padding:0 5px 0 6px;cursor:grab;user-select:none;box-sizing:border-box;z-index:2;transition:box-shadow .15s;`;
-
-  const resizeHandleLeft = document.createElement('div');
-  resizeHandleLeft.style.cssText = `position:absolute;left:-4px;top:50%;transform:translateY(-50%);width:9px;height:9px;border-radius:50%;background:#fff;opacity:0.88;cursor:ew-resize;z-index:3;box-shadow:0 0 0 1.5px rgba(0,0,0,0.13);`;
+  bar.style.cssText = `position:absolute;height:16px;top:50%;transform:translateY(-50%);border-radius:4px;background:${barColor};opacity:.8;left:${startOff*COL_W+1}px;width:${barDays*COL_W-2}px;display:flex;align-items:center;padding:0 5px 0 6px;cursor:${isGuestMode?'default':'grab'};user-select:none;box-sizing:border-box;z-index:2;transition:box-shadow .15s;`;
 
   const barLabel = document.createElement('span');
   barLabel.textContent = t.name;
   barLabel.style.cssText = `font-size:9px;color:rgba(255,255,255,.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;flex:1;padding-left:3px;`;
-
-  const resizeHandle = document.createElement('div');
-  resizeHandle.style.cssText = `position:absolute;right:-4px;top:50%;transform:translateY(-50%);width:9px;height:9px;border-radius:50%;background:#fff;opacity:0.88;cursor:ew-resize;z-index:3;box-shadow:0 0 0 1.5px rgba(0,0,0,0.13);`;
-
-  bar.appendChild(resizeHandleLeft);
   bar.appendChild(barLabel);
-  bar.appendChild(resizeHandle);
+
+  let resizeHandle = null, resizeHandleLeft = null;
+  if (!isGuestMode) {
+    resizeHandleLeft = document.createElement('div');
+    resizeHandleLeft.style.cssText = `position:absolute;left:-4px;top:50%;transform:translateY(-50%);width:9px;height:9px;border-radius:50%;background:#fff;opacity:0.88;cursor:ew-resize;z-index:3;box-shadow:0 0 0 1.5px rgba(0,0,0,0.13);`;
+    bar.insertBefore(resizeHandleLeft, barLabel);
+
+    resizeHandle = document.createElement('div');
+    resizeHandle.style.cssText = `position:absolute;right:-4px;top:50%;transform:translateY(-50%);width:9px;height:9px;border-radius:50%;background:#fff;opacity:0.88;cursor:ew-resize;z-index:3;box-shadow:0 0 0 1.5px rgba(0,0,0,0.13);`;
+    bar.appendChild(resizeHandle);
+  }
 
   bar.addEventListener('mouseenter', () => bar.style.boxShadow='0 2px 8px rgba(0,0,0,.25)');
   bar.addEventListener('mouseleave', () => bar.style.boxShadow='none');
   rRow.appendChild(bar);
 
-  // ドラッグ・リサイズをDOMに追加後に設定
-  setupChildBarDrag(bar, resizeHandle, resizeHandleLeft, mi, path, COL_W, d.startDate);
+  // ドラッグ・リサイズをDOMに追加後に設定（ゲストモードでは登録しない）
+  if (!isGuestMode) setupChildBarDrag(bar, resizeHandle, resizeHandleLeft, mi, path, COL_W, d.startDate);
 
   return { lRow, rRow };
 }
