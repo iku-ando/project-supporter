@@ -3000,6 +3000,53 @@ function makeChildRowPair(mi, path, t, dates, d, COL_W, ROW_H, LABEL_W, depth) {
     lRow.appendChild(delBtn);
   }
 
+  // ── 担当者（任意・自由入力） ──
+  const assigneeWrap = document.createElement('div');
+  assigneeWrap.style.cssText = `flex-shrink:0;display:flex;align-items:center;gap:3px;opacity:0;transition:opacity .15s;`;
+  lRow.addEventListener('mouseenter', () => assigneeWrap.style.opacity = '1');
+  lRow.addEventListener('mouseleave', () => { if (!t.assignee) assigneeWrap.style.opacity = '0'; });
+
+  const personIcon = `<svg width="11" height="11" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="6" r="2.8" stroke="currentColor" stroke-width="1.3"/><path d="M2.5 14c0-3 2.5-5 5.5-5s5.5 2 5.5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
+
+  const assigneeEl = document.createElement('span');
+  const refreshAssignee = () => {
+    if (t.assignee) {
+      assigneeEl.innerHTML = `${personIcon}<span style="font-size:10px;color:var(--text2);font-family:'DM Sans',sans-serif;">${t.assignee}</span>`;
+      assigneeWrap.style.opacity = '1';
+    } else {
+      assigneeEl.innerHTML = `${personIcon}<span style="font-size:10px;color:var(--text3);font-family:'DM Sans',sans-serif;">担当</span>`;
+    }
+  };
+  refreshAssignee();
+  assigneeEl.style.cssText = `display:flex;align-items:center;gap:2px;cursor:${isGuestMode?'default':'text'};color:var(--text3);padding:1px 5px;border-radius:4px;background:var(--bg3);border:1px solid var(--border);white-space:nowrap;`;
+
+  if (!isGuestMode) {
+    assigneeEl.title = 'クリックで担当者を入力';
+    assigneeEl.addEventListener('click', e => {
+      e.stopPropagation();
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.value = t.assignee || '';
+      inp.placeholder = '担当者名';
+      inp.style.cssText = `font-size:10px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--bg3);border:1px solid var(--accent);border-radius:4px;padding:1px 5px;outline:none;width:70px;`;
+      assigneeEl.replaceWith(inp);
+      inp.focus(); inp.select();
+      const commit = () => {
+        t.assignee = inp.value.trim() || '';
+        refreshAssignee();
+        inp.replaceWith(assigneeEl);
+        saveSnapshot();
+      };
+      inp.addEventListener('blur', commit);
+      inp.addEventListener('keydown', e2 => {
+        if (e2.key === 'Enter') { e2.preventDefault(); inp.blur(); }
+        if (e2.key === 'Escape') { inp.value = t.assignee || ''; inp.blur(); }
+      });
+    });
+  }
+  assigneeWrap.appendChild(assigneeEl);
+  lRow.appendChild(assigneeWrap);
+
   // ── 右行（グリッド＋バー）──
   const rRow = document.createElement('div');
   rRow.style.cssText = `position:relative;width:${gridW}px;height:${ROW_H}px;border-bottom:1px solid var(--border);box-sizing:border-box;overflow:hidden;`;
@@ -5019,9 +5066,56 @@ function renderGantt() {
         };
       }
 
+      // ── 担当者（任意・自由入力） ──
+      const assigneeWrap = document.createElement('div');
+      assigneeWrap.style.cssText = `flex-shrink:0;display:flex;align-items:center;gap:3px;opacity:0;transition:opacity .15s;`;
+      lRow.addEventListener('mouseenter', () => assigneeWrap.style.opacity = '1');
+      lRow.addEventListener('mouseleave', () => { if (!item.assignee) assigneeWrap.style.opacity = '0'; });
+
+      const personIcon = `<svg width="11" height="11" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="6" r="2.8" stroke="currentColor" stroke-width="1.3"/><path d="M2.5 14c0-3 2.5-5 5.5-5s5.5 2 5.5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
+
+      const assigneeEl = document.createElement('span');
+      const refreshAssignee = () => {
+        if (item.assignee) {
+          assigneeEl.innerHTML = `${personIcon}<span style="font-size:10px;color:var(--text2);font-family:'DM Sans',sans-serif;">${item.assignee}</span>`;
+          assigneeWrap.style.opacity = '1';
+        } else {
+          assigneeEl.innerHTML = `${personIcon}<span style="font-size:10px;color:var(--text3);font-family:'DM Sans',sans-serif;">担当</span>`;
+        }
+      };
+      refreshAssignee();
+      assigneeEl.style.cssText = `display:flex;align-items:center;gap:2px;cursor:${isGuestMode?'default':'text'};color:var(--text3);padding:1px 5px;border-radius:4px;background:var(--bg3);border:1px solid var(--border);white-space:nowrap;`;
+
+      if (!isGuestMode) {
+        assigneeEl.title = 'クリックで担当者を入力';
+        assigneeEl.addEventListener('click', e => {
+          e.stopPropagation();
+          const inp = document.createElement('input');
+          inp.type = 'text';
+          inp.value = item.assignee || '';
+          inp.placeholder = '担当者名';
+          inp.style.cssText = `font-size:10px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--bg3);border:1px solid var(--accent);border-radius:4px;padding:1px 5px;outline:none;width:70px;`;
+          assigneeEl.replaceWith(inp);
+          inp.focus(); inp.select();
+          const commit = () => {
+            item.assignee = inp.value.trim() || '';
+            refreshAssignee();
+            inp.replaceWith(assigneeEl);
+            saveSnapshot();
+          };
+          inp.addEventListener('blur', commit);
+          inp.addEventListener('keydown', e2 => {
+            if (e2.key === 'Enter') { e2.preventDefault(); inp.blur(); }
+            if (e2.key === 'Escape') { inp.value = item.assignee || ''; inp.blur(); }
+          });
+        });
+      }
+      assigneeWrap.appendChild(assigneeEl);
+
       lRow.appendChild(handle);
       if (toggleBtn) lRow.appendChild(toggleBtn);
       lRow.appendChild(nameEl);
+      lRow.appendChild(assigneeWrap);
       lRow.appendChild(addSubBtn);
       lRow.appendChild(delBtn);
 
