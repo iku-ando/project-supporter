@@ -4148,8 +4148,40 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
     cDel.onmouseleave=()=>cDel.style.color='var(--text3)';
     cDel.onclick=e=>{ e.stopPropagation(); parentItem.children.splice(ci,1); renderGantt(); };
 
+    // ── 担当者（任意・自由入力） ──
+    const cAssigneeWrap = document.createElement('div');
+    cAssigneeWrap.style.cssText = `flex-shrink:0;display:flex;align-items:center;gap:3px;opacity:0;transition:opacity .15s;`;
+    lcRow.addEventListener('mouseenter', () => cAssigneeWrap.style.opacity = '1');
+    lcRow.addEventListener('mouseleave', () => { if (!child.assignee) cAssigneeWrap.style.opacity = '0'; });
+    const cPersonIcon = `<svg width="11" height="11" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="6" r="2.8" stroke="currentColor" stroke-width="1.3"/><path d="M2.5 14c0-3 2.5-5 5.5-5s5.5 2 5.5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
+    const cAssigneeEl = document.createElement('span');
+    const refreshCAssignee = () => {
+      if (child.assignee) {
+        cAssigneeEl.innerHTML = `${cPersonIcon}<span style="font-size:10px;color:var(--text2);font-family:'DM Sans',sans-serif;">${child.assignee}</span>`;
+        cAssigneeWrap.style.opacity = '1';
+      } else {
+        cAssigneeEl.innerHTML = `${cPersonIcon}<span style="font-size:10px;color:var(--text3);font-family:'DM Sans',sans-serif;">担当</span>`;
+      }
+    };
+    refreshCAssignee();
+    cAssigneeEl.style.cssText = `display:flex;align-items:center;gap:2px;cursor:${isGuestMode?'default':'text'};color:var(--text3);padding:1px 5px;border-radius:4px;background:var(--bg3);border:1px solid var(--border);white-space:nowrap;`;
+    if (!isGuestMode) {
+      cAssigneeEl.addEventListener('click', e => {
+        e.stopPropagation();
+        const inp = document.createElement('input');
+        inp.type='text'; inp.value=child.assignee||''; inp.placeholder='担当者名';
+        inp.style.cssText=`font-size:10px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--bg3);border:1px solid var(--accent);border-radius:4px;padding:1px 5px;outline:none;width:70px;`;
+        cAssigneeEl.replaceWith(inp); inp.focus(); inp.select();
+        const commit = () => { child.assignee=inp.value.trim()||''; refreshCAssignee(); inp.replaceWith(cAssigneeEl); saveSnapshot(); };
+        inp.addEventListener('blur', commit);
+        inp.addEventListener('keydown', e2 => { if(e2.key==='Enter'){e2.preventDefault();inp.blur();} if(e2.key==='Escape'){inp.value=child.assignee||'';inp.blur();} });
+      });
+    }
+    cAssigneeWrap.appendChild(cAssigneeEl);
+
     lcRow.appendChild(cHandle);
     lcRow.appendChild(cName);
+    lcRow.appendChild(cAssigneeWrap);
     if (addGrandBtn) lcRow.appendChild(addGrandBtn);
     lcRow.appendChild(cDel);
 
