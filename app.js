@@ -3014,7 +3014,8 @@ function makeChildRowPair(mi, path, t, dates, d, COL_W, ROW_H, LABEL_W, depth) {
 
   // バー本体
   const bar = document.createElement('div');
-  bar.style.cssText = `position:absolute;height:16px;top:50%;transform:translateY(-50%);border-radius:4px;background:${barColor};opacity:.8;left:${startOff*COL_W+1}px;width:${barDays*COL_W-2}px;display:flex;align-items:center;padding:0 5px 0 6px;cursor:${isGuestMode?'default':'grab'};user-select:none;box-sizing:border-box;z-index:2;transition:box-shadow .15s;`;
+  const barOpacity = depth >= 2 ? 0.30 : 0.45; // 孫:薄め、小タスク:やや薄め（親は別途.8）
+  bar.style.cssText = `position:absolute;height:16px;top:50%;transform:translateY(-50%);border-radius:4px;background:${barColor};opacity:${barOpacity};left:${startOff*COL_W+1}px;width:${barDays*COL_W-2}px;display:flex;align-items:center;padding:0 5px 0 6px;cursor:${isGuestMode?'default':'grab'};user-select:none;box-sizing:border-box;z-index:2;transition:box-shadow .15s;`;
 
   const barLabel = document.createElement('span');
   barLabel.textContent = t.name;
@@ -3956,7 +3957,7 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
   const MAX_DEPTH = 2;
   const indent = depth * 14;
   const bgAlpha = depth === 1 ? 'rgba(243,242,248,0.95)' : 'rgba(226,230,239,0.95)';
-  const barAlpha = depth === 1 ? 'cc' : 'ff';
+  const barAlpha = depth === 1 ? '70' : '48'; // 小タスク:44%、孫タスク:28%（親ddは87%）
   const rowH = ROW_H - depth * 4;
   const tooltip = container.querySelector('#gt-tooltip');
   const ttName  = container.querySelector('#gt-tt-name');
