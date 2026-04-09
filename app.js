@@ -5299,7 +5299,7 @@ function renderGantt() {
       });
 
       // 子を持つ場合はタグライン風（非インタラクティブ）、リーフはフルバー
-      const hasChildren = item.children && item.children.length > 0;
+      const itemHasChildren = item.children && item.children.length > 0;
       const barLeft = effectiveOff * COL_W + 1;
 
       const bar = document.createElement('div');
@@ -5313,7 +5313,7 @@ function renderGantt() {
       const ttName  = container.querySelector('#gt-tt-name');
       const ttDates = container.querySelector('#gt-tt-dates');
 
-      if (hasChildren) {
+      if (itemHasChildren) {
         // ── タグライン風（子を持つ親：範囲は子層に依存）──
         const pDotSz = 8;
         const pLineH = 3;
