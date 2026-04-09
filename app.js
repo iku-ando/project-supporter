@@ -4247,102 +4247,32 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
       rcRow.appendChild(dcell);
     });
 
+    // タグライン風バー（小タスク・孫タスク：非インタラクティブ表示）
+    const cDotSz  = depth === 1 ? 6 : 5;
+    const cLineH  = depth === 1 ? 3 : 2;
+    const cBarOp  = depth === 1 ? 0.65 : 0.45;
+    const cBarW   = Math.max(cDotSz * 2 + 2, cW);
+    const cBarLeft = cOff * COL_W + 1;
+
     const cBar = document.createElement('div');
-    cBar.setAttribute('data-phase',phase);
-    cBar.style.cssText=`position:absolute;left:${cOff*COL_W+1}px;top:3px;width:${Math.max(4,cW)}px;height:${rowH-8}px;background:${phaseColor}${barAlpha};border-radius:99px;overflow:visible;cursor:grab;user-select:none;z-index:2;`;
+    cBar.setAttribute('data-phase', phase);
+    cBar.style.cssText = `position:absolute;left:${cBarLeft}px;top:50%;transform:translateY(-50%);width:${cBarW}px;height:${cDotSz}px;cursor:default;user-select:none;z-index:2;`;
 
-    // バーラベルをバー外（右横）に配置
+    const cLine = document.createElement('div');
+    cLine.style.cssText = `position:absolute;left:${cDotSz/2}px;top:50%;transform:translateY(-50%);width:${Math.max(0,cBarW-cDotSz)}px;height:${cLineH}px;background:${phaseColor};opacity:${cBarOp};border-radius:99px;pointer-events:none;`;
+    const cDotL = document.createElement('div');
+    cDotL.style.cssText = `position:absolute;left:0;top:50%;transform:translateY(-50%);width:${cDotSz}px;height:${cDotSz}px;border-radius:50%;background:${phaseColor};opacity:${Math.min(1,cBarOp+0.2)};pointer-events:none;`;
+    const cDotR = document.createElement('div');
+    cDotR.style.cssText = `position:absolute;right:0;top:50%;transform:translateY(-50%);width:${cDotSz}px;height:${cDotSz}px;border-radius:50%;background:${phaseColor};opacity:${Math.min(1,cBarOp+0.2)};pointer-events:none;`;
+    cBar.appendChild(cLine);
+    cBar.appendChild(cDotL);
+    cBar.appendChild(cDotR);
+
+    // バーラベル（右横・薄いスタイル）
     const cBarLabel = document.createElement('span');
-    cBarLabel.id=cBarLabelId;
-    cBarLabel.style.cssText=`position:absolute;left:${cOff*COL_W+1+Math.max(4,cW)+4}px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--text2);white-space:nowrap;pointer-events:none;font-family:'DM Sans',sans-serif;z-index:1;`;
-    cBarLabel.textContent=child.name;
-
-    // 左リサイズハンドル（丸ドット）
-    const cResizeLeft = document.createElement('div');
-    cResizeLeft.style.cssText=`position:absolute;left:-4px;top:50%;transform:translateY(-50%);width:8px;height:8px;border-radius:50%;background:#fff;opacity:0.85;cursor:ew-resize;z-index:3;box-shadow:0 0 0 1.5px rgba(0,0,0,0.12);`;
-    cBar.appendChild(cResizeLeft);
-
-    // 右リサイズハンドル（丸ドット）
-    const cResize = document.createElement('div');
-    cResize.style.cssText=`position:absolute;right:-4px;top:50%;transform:translateY(-50%);width:8px;height:8px;border-radius:50%;background:#fff;opacity:0.85;cursor:ew-resize;z-index:3;box-shadow:0 0 0 1.5px rgba(0,0,0,0.12);`;
-    cBar.appendChild(cResize);
-
-    // バードラッグ（グリッドスナップ + フェーズ自動更新）
-    cBar.addEventListener('mousedown', e=>{
-      if(e.target===cResize||e.target===cResizeLeft) return;
-      e.preventDefault(); e.stopPropagation();
-      if(tooltip) tooltip.style.display='none';
-      cBar.style.cursor='grabbing';
-      const origColIdx = cOff; // +1px バイアスを除いた列インデックス
-      const startX     = e.clientX;
-      const origStart  = child.startDate || d.startDate;
-      const origEnd    = child.endDate   || addDays(origStart, (child.days||2)-1);
-      const barW       = parseInt(cBar.style.width);
-      const onMove=ev=>{
-        const cd = Math.round((ev.clientX - startX) / COL_W);
-        const newColIdx = Math.max(0, origColIdx + cd);
-        cBar.style.left = (newColIdx * COL_W + 1) + 'px';
-        cBarLabel.style.left = (newColIdx * COL_W + 1 + barW + 4) + 'px';
-      };
-      const onUp=ev=>{
-        cBar.style.cursor='grab';
-        document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp);
-        const finalDelta = Math.round((ev.clientX - startX) / COL_W);
-        if(finalDelta===0) { cBar.style.left = (origColIdx*COL_W+1)+'px'; return; }
-        child.startDate = addDays(origStart, finalDelta);
-        child.endDate   = addDays(origEnd,   finalDelta);
-        child.days = Math.max(1, daysBetween(child.startDate, child.endDate)+1);
-        child.phase = getPhaseForDate(d, child.startDate);
-        renderGantt();
-      };
-      document.addEventListener('mousemove',onMove); document.addEventListener('mouseup',onUp);
-    });
-
-    // リサイズ
-    cResize.addEventListener('mousedown',e=>{
-      e.preventDefault(); e.stopPropagation();
-      const sx=e.clientX, ow=parseInt(cBar.style.width), ol=parseInt(cBar.style.left);
-      const onMove=ev=>{
-        const newW = Math.max(COL_W, ow+Math.round((ev.clientX-sx)/COL_W)*COL_W);
-        cBar.style.width = newW+'px';
-        cBarLabel.style.left = (ol + newW + 4) + 'px';
-      };
-      const onUp=ev=>{
-        document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp);
-        const cd=Math.round((ev.clientX-sx)/COL_W); if(cd===0) return;
-        child.days   =Math.max(1,(child.days||2)+cd);
-        child.endDate=addDays(child.startDate||d.startDate,child.days-1);
-        renderGantt();
-      };
-      document.addEventListener('mousemove',onMove); document.addEventListener('mouseup',onUp);
-    });
-
-    // 左リサイズ
-    cResizeLeft.addEventListener('mousedown', e => {
-      e.preventDefault(); e.stopPropagation();
-      const startX   = e.clientX;
-      const origLeft = parseInt(cBar.style.left);
-      const origW    = parseInt(cBar.style.width);
-      const onMove = ev => {
-        const dx      = ev.clientX - startX;
-        const newLeft = Math.max(0, Math.round((origLeft + dx) / COL_W) * COL_W);
-        const newW    = Math.max(COL_W, origW + (origLeft - newLeft));
-        cBar.style.left  = newLeft + 'px';
-        cBar.style.width = newW + 'px';
-        cBarLabel.style.left = (newLeft + newW + 4) + 'px';
-      };
-      const onUp = () => {
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup',   onUp);
-        child.startDate = addDays(d.startDate, Math.round(parseInt(cBar.style.left) / COL_W));
-        child.days      = Math.max(1, Math.round(parseInt(cBar.style.width) / COL_W));
-        child.endDate   = addDays(child.startDate, child.days - 1);
-        child.phase     = getPhaseForDate(d, child.startDate);
-        renderGantt();
-      };
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup',   onUp);
-    });
+    cBarLabel.id = cBarLabelId;
+    cBarLabel.style.cssText = `position:absolute;left:${cBarLeft + cBarW + 4}px;top:50%;transform:translateY(-50%);font-size:${depth===1?'10':'9'}px;color:var(--text3);white-space:nowrap;pointer-events:none;font-family:'DM Sans',sans-serif;z-index:1;`;
+    cBarLabel.textContent = child.name;
 
     // ツールチップ
     cBar.addEventListener('mouseenter',e=>{ if(tooltip&&ttName&&ttDates){ ttName.textContent=child.name; ttDates.textContent=`${cEffStart} 〜 ${cEffEnd}（${cDays}日）`; tooltip.style.display='block'; } });
@@ -5009,23 +4939,36 @@ function renderGantt() {
       cell.style.cssText=`position:absolute;left:${di*COL_W}px;top:0;width:${COL_W}px;height:100%;background:${isT?'rgba(91,78,245,0.06)':off?'rgba(0,0,0,0.03)':'var(--bg2)'};border-left:${isMStart?'1px solid var(--border2)':'none'};box-sizing:border-box;`;
       rPhaseRow.appendChild(cell);
     });
-    // タグラインスパン線（フェーズ内アイテムの最早〜最遅日）
+    // タグラインスパン線（フェーズ内アイテムの最早〜最遅日：子・孫の有効範囲を使用）
     if (phaseItems.length) {
-      const allItemStarts = phaseItems.map(it => it.startDate || d.startDate);
-      const allItemEnds   = phaseItems.map(it => it.endDate || addDays(it.startDate || d.startDate, (it.days||3)-1));
-      // 子タスクの日付も考慮
+      const allEffStarts = [], allEffEnds = [];
       phaseItems.forEach(it => {
+        let itStart = it.startDate || d.startDate;
+        let itEnd   = it.endDate   || addDays(itStart, (it.days||3)-1);
         if (it.children && it.children.length) {
-          it.children.forEach(c => { if(c.startDate) allItemStarts.push(c.startDate); if(c.endDate) allItemEnds.push(c.endDate); });
+          it.children.forEach(c => {
+            let cStart = c.startDate || itStart;
+            let cEnd   = c.endDate   || addDays(cStart, (c.days||2)-1);
+            if (c.children && c.children.length) {
+              c.children.forEach(g => {
+                if (g.startDate && g.startDate < cStart) cStart = g.startDate;
+                if (g.endDate   && g.endDate   > cEnd)   cEnd   = g.endDate;
+              });
+            }
+            if (cStart < itStart) itStart = cStart;
+            if (cEnd   > itEnd)   itEnd   = cEnd;
+          });
         }
+        allEffStarts.push(itStart);
+        allEffEnds.push(itEnd);
       });
-      const iMinStart = allItemStarts.reduce((a,b)=>a<b?a:b);
-      const iMaxEnd   = allItemEnds.reduce((a,b)=>a>b?a:b);
+      const iMinStart = allEffStarts.reduce((a,b)=>a<b?a:b);
+      const iMaxEnd   = allEffEnds.reduce((a,b)=>a>b?a:b);
       const iSpanOff  = Math.max(0, daysBetween(d.startDate, iMinStart));
       const iSpanDays = Math.max(1, daysBetween(iMinStart, iMaxEnd)+1);
       const iDotSize  = 7;
-      const iSpanLeft = iSpanOff * COL_W + 4;
-      const iSpanW    = Math.max(iDotSize+2, Math.min(iSpanDays * COL_W - 8, gridW - iSpanLeft));
+      const iSpanLeft = iSpanOff * COL_W + 1;
+      const iSpanW    = Math.max(iDotSize+2, Math.min(iSpanDays * COL_W - 2, gridW - iSpanLeft));
       const iSpanLine = document.createElement('div');
       iSpanLine.style.cssText = `position:absolute;left:${iSpanLeft + iDotSize/2}px;top:50%;transform:translateY(-50%);width:${Math.max(0,iSpanW-iDotSize)}px;height:2px;background:${phaseColor};opacity:0.75;pointer-events:none;z-index:4;`;
       const iDotL = document.createElement('div');
