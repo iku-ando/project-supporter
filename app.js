@@ -142,7 +142,7 @@ function renderCal(which) {
 
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const isToday = dateStr === today.toISOString().split('T')[0];
+    const isToday = dateStr === toDateStr(today);
     const isSelected = dateStr === startVal || dateStr === endVal;
     const inRange = startVal && endVal && dateStr > startVal && dateStr < endVal;
     let cls = 'cal-day';
@@ -1562,7 +1562,7 @@ function addDynamicTab(key) {
 
 // ─── 課題リスト ───
 const ISSUE_TYPES    = ['質問', '確認', 'バグ', '依頼', 'その他'];
-const ISSUE_STATUSES = ['新規', '対応中', '解決済み'];
+const ISSUE_STATUSES = ['新規', '確認中', '対応中', '確認待ち', '差し戻し', '解決済み'];
 
 const ISSUE_TYPE_STYLE = {
   '質問':   { bg: 'rgba(59,130,246,0.12)',  color: '#2563eb' },
@@ -1573,9 +1573,14 @@ const ISSUE_TYPE_STYLE = {
 };
 const ISSUE_STATUS_STYLE = {
   '新規':    { bg: 'rgba(156,163,175,0.12)', color: '#6b7280',  border: 'rgba(156,163,175,0.3)'  },
+  '確認中':  { bg: 'rgba(245,158,11,0.10)',  color: '#d97706',  border: 'rgba(245,158,11,0.28)'  },
   '対応中':  { bg: 'rgba(37,99,235,0.10)',   color: '#2563eb',  border: 'rgba(37,99,235,0.28)'   },
+  '確認待ち':{ bg: 'rgba(168,85,247,0.10)',  color: '#9333ea',  border: 'rgba(168,85,247,0.28)'  },
+  '差し戻し':{ bg: 'rgba(239,68,68,0.10)',   color: '#dc2626',  border: 'rgba(239,68,68,0.28)'   },
   '解決済み':{ bg: 'rgba(5,150,105,0.10)',   color: '#059669',  border: 'rgba(5,150,105,0.28)'   },
 };
+
+let issueHideResolved = false;
 
 function getIssues() {
   if (!generatedData.issues) generatedData.issues = [];
@@ -1619,12 +1624,22 @@ function renderIssueList() {
   // ── ヘッダーバー ──
   const topBar = document.createElement('div');
   topBar.style.cssText = `display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;`;
-  const resolvedCount = issues.filter(i => i.resolved).length;
+  const resolvedCount = issues.filter(i => i.status === '解決済み').length;
   topBar.innerHTML = `
     <div>
       <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:18px;color:var(--text);">課題リスト</div>
       <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);margin-top:3px;letter-spacing:.5px;">${issues.length}件 · 解決済み ${resolvedCount}件</div>
     </div>`;
+
+  // 解決済み非表示トグル
+  const toggleBtn = document.createElement('button');
+  toggleBtn.style.cssText = `display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:6px;border:1px solid var(--border2);background:${issueHideResolved ? 'var(--accent)' : 'var(--bg2)'};color:${issueHideResolved ? '#fff' : 'var(--text2)'};font-family:'DM Sans',sans-serif;font-size:12px;cursor:pointer;transition:all .15s;`;
+  toggleBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 8s2.5-5 6-5 6 5 6 5-2.5 5-6 5-6-5-6-5z" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.3"/>${issueHideResolved ? '<line x1="3" y1="3" x2="13" y2="13" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>' : ''}</svg>解決済みを${issueHideResolved ? '表示' : '非表示'}`;
+  toggleBtn.addEventListener('click', () => {
+    issueHideResolved = !issueHideResolved;
+    renderIssueList();
+  });
+  topBar.appendChild(toggleBtn);
   body.appendChild(topBar);
 
   // ── テーブル ──
@@ -1648,8 +1663,9 @@ function renderIssueList() {
     <div></div>`;
   table.appendChild(head);
 
-  // データ行
-  issues.forEach((issue, idx) => {
+  // データ行（解決済み非表示フィルター適用）
+  const visibleIssues = issueHideResolved ? issues.filter(i => i.status !== '解決済み') : issues;
+  visibleIssues.forEach((issue, idx) => {
     table.appendChild(makeIssueRow(issue, idx, COLS));
   });
 
@@ -2333,8 +2349,8 @@ function fillDemo() {
 
   const today2 = new Date();
   const end2 = new Date(); end2.setDate(today2.getDate() + 90);
-  const startStr = today2.toISOString().split('T')[0];
-  const endStr = end2.toISOString().split('T')[0];
+  const startStr = toDateStr(today2);
+  const endStr = toDateStr(end2);
   selectDate('start', startStr);
   selectDate('end', endStr);
 
@@ -3861,7 +3877,10 @@ function isOffDay(dateStr) {
 
 
 function toDateStr(d) {
-  return d.toISOString().split('T')[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 function parseDate(s) {
   const [y,mo,day] = s.split('-').map(Number);
@@ -4015,7 +4034,7 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
   const MAX_DEPTH = 2;
   const indent = depth * 14;
   const bgAlpha = depth === 1 ? 'rgba(243,242,248,0.95)' : 'rgba(226,230,239,0.95)';
-  const barAlpha = depth === 1 ? '70' : '48'; // 小タスク:44%、孫タスク:28%（親ddは87%）
+  const barAlpha = depth === 1 ? '70' : '30'; // 小タスク:44%、孫タスク:19%（親ddは87%）
   const rowH = ROW_H - depth * 4;
   const tooltip = container.querySelector('#gt-tooltip');
   const ttName  = container.querySelector('#gt-tt-name');
@@ -4190,7 +4209,25 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
     }
     cAssigneeWrap.appendChild(cAssigneeEl);
 
+    // 孫タスク折りたたみボタン（depth=1 かつ孫がある場合のみ）
+    const hasGrandChildren = depth === 1 && child.children && child.children.length > 0;
+    const collapseBtn = hasGrandChildren ? document.createElement('button') : null;
+    if (collapseBtn) {
+      const isCollapsed = !!child._collapsed;
+      collapseBtn.type = 'button';
+      collapseBtn.style.cssText = `background:none;border:none;padding:0 2px;cursor:pointer;flex-shrink:0;color:var(--text3);display:flex;align-items:center;opacity:0.6;transition:opacity .15s;`;
+      collapseBtn.innerHTML = isCollapsed
+        ? `<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 4l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+        : `<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 6l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      collapseBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        child._collapsed = !child._collapsed;
+        renderGantt();
+      });
+    }
+
     lcRow.appendChild(cHandle);
+    if (collapseBtn) lcRow.appendChild(collapseBtn);
     lcRow.appendChild(cName);
     lcRow.appendChild(cAssigneeWrap);
     if (addGrandBtn) lcRow.appendChild(addGrandBtn);
@@ -4212,7 +4249,7 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
 
     const cBar = document.createElement('div');
     cBar.setAttribute('data-phase',phase);
-    cBar.style.cssText=`position:absolute;left:${cOff*COL_W+1}px;top:3px;width:${Math.max(4,cW)}px;height:${rowH-8}px;background:${phaseColor}${barAlpha};border-radius:99px;overflow:hidden;cursor:grab;user-select:none;z-index:2;`;
+    cBar.style.cssText=`position:absolute;left:${cOff*COL_W+1}px;top:3px;width:${Math.max(4,cW)}px;height:${rowH-8}px;background:${phaseColor}${barAlpha};border-radius:99px;overflow:visible;cursor:grab;user-select:none;z-index:2;`;
 
     // バーラベルをバー外（右横）に配置
     const cBarLabel = document.createElement('span');
@@ -4236,29 +4273,26 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
       e.preventDefault(); e.stopPropagation();
       if(tooltip) tooltip.style.display='none';
       cBar.style.cursor='grabbing';
-      const origLeft = parseInt(cBar.style.left);
-      const barW     = parseInt(cBar.style.width);
-      // 親バーと同じグリッドスナップ基準（クリック位置を列境界に合わせる）
-      const barRect  = cBar.getBoundingClientRect();
-      const snapBaseX = e.clientX - (e.clientX - barRect.left) % COL_W;
-      let lastDelta  = 0;
+      const origColIdx = cOff; // +1px バイアスを除いた列インデックス
+      const startX     = e.clientX;
+      const origStart  = child.startDate || d.startDate;
+      const origEnd    = child.endDate   || addDays(origStart, (child.days||2)-1);
+      const barW       = parseInt(cBar.style.width);
       const onMove=ev=>{
-        const cd = Math.round((ev.clientX - snapBaseX) / COL_W);
-        lastDelta = cd;
-        const newLeft = Math.max(0, origLeft + cd * COL_W);
-        cBar.style.left = newLeft + 'px';
-        cBarLabel.style.left = (newLeft + parseInt(cBar.style.width) + 4) + 'px';
+        const cd = Math.round((ev.clientX - startX) / COL_W);
+        const newColIdx = Math.max(0, origColIdx + cd);
+        cBar.style.left = (newColIdx * COL_W + 1) + 'px';
+        cBarLabel.style.left = (newColIdx * COL_W + 1 + barW + 4) + 'px';
       };
-      const onUp=()=>{
+      const onUp=ev=>{
         cBar.style.cursor='grab';
         document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp);
-        if(lastDelta===0) return;
-        const origStart = child.startDate || d.startDate;
-        const origEnd   = child.endDate   || addDays(origStart, (child.days||2)-1);
-        child.startDate = addDays(origStart, lastDelta);
-        child.endDate   = addDays(origEnd,   lastDelta);
+        const finalDelta = Math.round((ev.clientX - startX) / COL_W);
+        if(finalDelta===0) { cBar.style.left = (origColIdx*COL_W+1)+'px'; return; }
+        child.startDate = addDays(origStart, finalDelta);
+        child.endDate   = addDays(origEnd,   finalDelta);
         child.days = Math.max(1, daysBetween(child.startDate, child.endDate)+1);
-        child.phase = getPhaseForDate(d, child.startDate); // フェーズ自動更新
+        child.phase = getPhaseForDate(d, child.startDate);
         renderGantt();
       };
       document.addEventListener('mousemove',onMove); document.addEventListener('mouseup',onUp);
@@ -4322,8 +4356,8 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
     gtLeftBody.appendChild(lcRow);
     gtRightBody.appendChild(rcRow);
 
-    // 孫タスクを再帰描画
-    if (child.children && child.children.length) {
+    // 孫タスクを再帰描画（折りたたまれていない場合のみ）
+    if (child.children && child.children.length && !child._collapsed) {
       renderScheduleChildren(child.children, child, depth+1, d, dates, gridW, COL_W, ROW_H, phaseColor, phase, gtLeftBody, gtRightBody, container);
     }
   });
@@ -5233,7 +5267,7 @@ function renderGantt() {
 
       const bar = document.createElement('div');
       bar.setAttribute('data-phase',phase);
-      bar.style.cssText=`position:absolute;left:${effectiveOff*COL_W+1}px;top:6px;width:${Math.max(4,effectiveBarW)}px;height:${ROW_H-12}px;background:${phaseColor}dd;border-radius:99px;box-sizing:border-box;overflow:hidden;cursor:${isGuestMode?'default':'grab'};user-select:none;`;
+      bar.style.cssText=`position:absolute;left:${effectiveOff*COL_W+1}px;top:6px;width:${Math.max(4,effectiveBarW)}px;height:${ROW_H-12}px;background:${phaseColor}dd;border-radius:99px;box-sizing:border-box;overflow:visible;cursor:${isGuestMode?'default':'grab'};user-select:none;`;
 
       // バーのテキストはバー外（右横）に表示
       const barLabel=document.createElement('span');
@@ -5257,21 +5291,34 @@ function renderGantt() {
         bar.appendChild(resizeHandleLeft);
         resizeHandleLeft.addEventListener('mousedown', ev => {
           ev.preventDefault(); ev.stopPropagation();
-          const startX = ev.clientX;
-          const origLeft = parseInt(bar.style.left);
+          const startX    = ev.clientX;
+          const origLeft  = parseInt(bar.style.left);
           const origWidth = parseInt(bar.style.width);
           const onMove = ev2 => {
-            const dx = ev2.clientX - startX;
-            const newLeft = Math.max(0, Math.round((origLeft + dx) / COL_W) * COL_W);
-            const newWidth = Math.max(COL_W, origWidth + (origLeft - newLeft));
-            bar.style.left = newLeft + 'px';
+            const colDelta = Math.round((ev2.clientX - startX) / COL_W);
+            const newLeft  = Math.max(0, origLeft + colDelta * COL_W);
+            const newWidth = Math.max(COL_W, origWidth - colDelta * COL_W);
+            bar.style.left  = newLeft  + 'px';
             bar.style.width = newWidth + 'px';
-            item.startDate = addDays(d.startDate, Math.round(newLeft / COL_W));
-            item.days = Math.round(newWidth / COL_W);
-            item.endDate = addDays(item.startDate, item.days - 1);
-            if (ttName) { ttName.textContent = item.name; ttDates.textContent = `${item.startDate} 〜 ${item.endDate}（${item.days}日）`; tooltip.style.display='block'; }
+            if (ttName) {
+              const newStart = addDays(d.startDate, Math.round(newLeft / COL_W));
+              const newDays  = Math.round(newWidth / COL_W);
+              ttName.textContent  = item.name;
+              ttDates.textContent = `${newStart} 〜 ${addDays(newStart, newDays-1)}（${newDays}日）`;
+              tooltip.style.display = 'block';
+            }
           };
-          const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); if (tooltip) tooltip.style.display='none'; renderGantt(); };
+          const onUp = ev2 => {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            if (tooltip) tooltip.style.display = 'none';
+            const colDelta = Math.round((ev2.clientX - startX) / COL_W);
+            if (colDelta === 0) return;
+            item.startDate = addDays(d.startDate, Math.round((origLeft + colDelta * COL_W) / COL_W));
+            item.days      = Math.max(1, Math.round((origWidth - colDelta * COL_W) / COL_W));
+            item.endDate   = addDays(item.startDate, item.days - 1);
+            renderGantt();
+          };
           document.addEventListener('mousemove', onMove);
           document.addEventListener('mouseup', onUp);
         });
@@ -5283,33 +5330,34 @@ function renderGantt() {
 
         // ── バードラッグ移動（グリッドスナップ・ずれなし）──
         bar.addEventListener('mousedown', e => {
-          if (e.target === resizeHandle) return;
+          if (e.target === resizeHandle || e.target === resizeHandleLeft) return;
           e.preventDefault();
           tooltip.style.display='none';
           bar.style.cursor='grabbing';
-          const origLeft = parseInt(bar.style.left);
-          const barRect  = bar.getBoundingClientRect();
-          const snapBaseX = e.clientX - (e.clientX - barRect.left) % COL_W;
-          const startX = snapBaseX;
-          let lastDelta = 0;
+          // +1px バイアスを除いた列インデックス基準で計算
+          const origColIdx = effectiveOff; // 列インデックス（整数）
+          const startX = e.clientX;
           const onMove = ev => {
-            const dx       = ev.clientX - startX;
-            const colDelta = Math.round(dx / COL_W);
-            lastDelta      = colDelta;
-            const newLeft  = Math.max(0, origLeft + colDelta * COL_W);
-            bar.style.left = newLeft + 'px';
+            const colDelta = Math.round((ev.clientX - startX) / COL_W);
+            const newColIdx = Math.max(0, origColIdx + colDelta);
+            bar.style.left = (newColIdx * COL_W + 1) + 'px';
           };
-          const onUp = () => {
+          const onUp = ev => {
             bar.style.cursor = 'grab';
             document.removeEventListener('mousemove', onMove);
             document.removeEventListener('mouseup', onUp);
-            if (lastDelta === 0) return;
-            item.startDate = addDays(effectiveStart, lastDelta);
-            item.endDate   = addDays(effectiveEnd,   lastDelta);
+            const finalDelta = Math.round((ev.clientX - startX) / COL_W);
+            if (finalDelta === 0) { bar.style.left = (origColIdx * COL_W + 1) + 'px'; return; }
+            item.startDate = addDays(effectiveStart, finalDelta);
+            item.endDate   = addDays(effectiveEnd,   finalDelta);
             item.days = Math.max(1, daysBetween(item.startDate, item.endDate) + 1);
             if (item.children) item.children.forEach(c => {
-              if (c.startDate) c.startDate = addDays(c.startDate, lastDelta);
-              if (c.endDate)   c.endDate   = addDays(c.endDate,   lastDelta);
+              if (c.startDate) c.startDate = addDays(c.startDate, finalDelta);
+              if (c.endDate)   c.endDate   = addDays(c.endDate,   finalDelta);
+              if (c.children)  c.children.forEach(g => {
+                if (g.startDate) g.startDate = addDays(g.startDate, finalDelta);
+                if (g.endDate)   g.endDate   = addDays(g.endDate,   finalDelta);
+              });
             });
             renderGantt();
           };

@@ -915,7 +915,8 @@ body {
   gap: 2px;
   flex-shrink: 1;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
+  position: relative;
 }
 .main-tab {
   display: flex;
@@ -941,6 +942,30 @@ body {
   box-shadow: 0 1px 6px rgba(0,0,0,0.10);
 }
 .main-tab:hover:not(.active) { background: rgba(0,0,0,0.04); color: var(--text2); }
+
+/* チケット風の窪みセパレーター */
+.tab-notch {
+  width: 22px;
+  flex-shrink: 0;
+  position: relative;
+  align-self: stretch;
+}
+.tab-notch::before,
+.tab-notch::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  /* ページ背景色と同じにして「くり抜き」に見せる */
+  background: #f0f0f0;
+  z-index: 3;
+}
+/* tab bar padding=4px・円半径10px → 中心をタブバー上下端に合わせる */
+.tab-notch::before { top: -14px; }
+.tab-notch::after  { bottom: -14px; }
 
 .tab-view { display: none; }
 .tab-view.active { display: block; animation: fadeIn 0.2s ease; }
