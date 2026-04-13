@@ -4245,9 +4245,42 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
       // ── ダイヤモンド（小タスクのマイルストーン）──
       const mSize = rowH - 6;
       const mCenter = cBarLeft + COL_W / 2;
-      cBar.style.cssText = `position:absolute;left:${mCenter - mSize/2}px;top:50%;transform:translateY(-50%) rotate(45deg);width:${mSize}px;height:${mSize}px;background:${phaseColor};border-radius:2px;cursor:pointer;user-select:none;z-index:3;`;
+      cBar.style.cssText = `position:absolute;left:${mCenter - mSize/2}px;top:50%;transform:translateY(-50%) rotate(45deg);width:${mSize}px;height:${mSize}px;background:${phaseColor};border-radius:2px;cursor:${isGuestMode?'default':'grab'};user-select:none;z-index:3;`;
       cBarLabel.style.cssText = `position:absolute;left:${mCenter + mSize/2 + 4}px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--text2);white-space:nowrap;pointer-events:none;font-family:'DM Sans',sans-serif;z-index:1;`;
-      cBar.addEventListener('click', e => { if(!isGuestMode){ document.querySelectorAll('.gantt-bar-popup').forEach(p=>p.remove()); showBarPopup(e, child); } });
+      if (!isGuestMode) {
+        let cMsMoved = false;
+        cBar.addEventListener('mousedown', e => {
+          e.preventDefault(); e.stopPropagation();
+          cMsMoved = false;
+          cBar.style.cursor = 'grabbing';
+          const startX = e.clientX;
+          const origOff = cOff;
+          const onMove = ev => {
+            if (Math.abs(ev.clientX - startX) > 3) cMsMoved = true;
+            const cd = Math.round((ev.clientX - startX) / COL_W);
+            const newOff = Math.max(0, origOff + cd);
+            cBar.style.left = (newOff * COL_W + COL_W/2 - mSize/2) + 'px';
+            cBarLabel.style.left = (newOff * COL_W + COL_W/2 + mSize/2 + 4) + 'px';
+          };
+          const onUp = ev => {
+            cBar.style.cursor = 'grab';
+            document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp);
+            const cd = Math.round((ev.clientX - startX) / COL_W);
+            if (cd === 0) return;
+            child.startDate = addDays(child.startDate || d.startDate, cd);
+            child.endDate   = child.startDate;
+            child.days      = 1;
+            renderGantt();
+          };
+          document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
+        });
+        cBar.addEventListener('click', e => {
+          if (cMsMoved) return;
+          e.stopPropagation();
+          document.querySelectorAll('.gantt-bar-popup').forEach(p=>p.remove());
+          showBarPopup(e, child);
+        });
+      }
     } else if (hasSubChildren) {
       // ── タグライン風（子を持つ小タスク：ドラッグで配下ごと移動）──
       const cDotSz = depth === 1 ? 6 : 5;
@@ -4978,11 +5011,11 @@ function renderGantt() {
         <!-- グリッドヘッダー -->
         <div id="gt-right-head" style="flex-shrink:0;background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:20;">
           <!-- 月行 -->
-          <div style="display:flex;width:${gridW}px;border-bottom:1px solid var(--border);background:var(--bg2);">
+          <div style="display:flex;width:${gridW}px;height:22px;border-bottom:1px solid var(--border);background:var(--bg2);overflow:hidden;">
             ${monthGroups.map(mg => `<div style="width:${mg.count*COL_W}px;min-width:${mg.count*COL_W}px;padding:4px 8px;font-family:'Syne',sans-serif;font-size:11px;font-weight:600;color:var(--text2);border-right:1px solid var(--border2);white-space:nowrap;box-sizing:border-box;background:var(--bg2);">${mg.label}</div>`).join('')}
           </div>
           <!-- 日行 -->
-          <div style="display:flex;width:${gridW}px;border-bottom:1px solid var(--border);background:var(--bg2);">
+          <div style="display:flex;width:${gridW}px;height:22px;border-bottom:1px solid var(--border);background:var(--bg2);overflow:hidden;">
             ${dates.map(dt => {
               const isT = dt===today;
               const isMStart = dt.endsWith('-01')||dt===d.startDate;
@@ -4991,7 +5024,7 @@ function renderGantt() {
             }).join('')}
           </div>
           <!-- 曜日行 -->
-          <div style="display:flex;width:${gridW}px;background:var(--bg2);">
+          <div style="display:flex;width:${gridW}px;height:18px;background:var(--bg2);overflow:hidden;">
             ${dates.map(dt => {
               const dow = parseDate(dt).getDay();
               const isT = dt===today;
