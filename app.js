@@ -5000,7 +5000,7 @@ function renderGantt() {
           <div style="height:22px;border-bottom:1px solid var(--border);"></div><!-- 月行 -->
           <div style="height:22px;border-bottom:1px solid var(--border);"></div><!-- 日行 -->
           <div style="height:18px;"></div><!-- 曜日行 -->
-          <div style="height:24px;border-top:1px solid var(--border);background:var(--bg2);"></div><!-- 定例レーン -->
+          ${recurringList.length ? '<div style="height:24px;border-top:1px solid var(--border);background:var(--bg2);"></div>' : ''}<!-- 定例レーン -->
         </div>
         <!-- タスクラベル -->
         <div id="gt-left-body" style="flex:1;overflow-y:scroll;overflow-x:hidden;scrollbar-width:none;min-height:0;"></div>
@@ -5035,7 +5035,7 @@ function renderGantt() {
             }).join('')}
           </div>
           <!-- 定例ラベルレーン -->
-          <div id="gt-rec-lane" style="position:relative;width:${gridW}px;height:24px;border-top:1px solid var(--border);overflow:visible;"></div>
+          ${recurringList.length ? `<div id="gt-rec-lane" style="position:relative;width:${gridW}px;height:24px;border-top:1px solid var(--border);overflow:visible;"></div>` : ''}
         </div>
         <!-- グリッドボディ -->
         <div id="gt-right-body" style="position:relative;width:${gridW}px;"></div>
