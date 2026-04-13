@@ -4152,22 +4152,6 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
     cName.addEventListener('blur',()=>renderGantt());
     cName.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();cName.blur();}});
 
-    // サブ追加（孫まで：depth < MAX_DEPTH）
-    const addGrandBtn = depth < MAX_DEPTH ? document.createElement('button') : null;
-    if (addGrandBtn) {
-      addGrandBtn.type='button'; addGrandBtn.textContent='＋';
-      addGrandBtn.style.cssText=`background:none;border:1px dashed var(--border2);border-radius:3px;color:var(--text3);cursor:pointer;font-size:8px;padding:1px 4px;flex-shrink:0;opacity:0;transition:opacity .15s;`;
-      lcRow.addEventListener('mouseenter',()=>addGrandBtn.style.opacity='1');
-      lcRow.addEventListener('mouseleave',()=>addGrandBtn.style.opacity='0');
-      addGrandBtn.onmouseenter=()=>{addGrandBtn.style.borderColor='var(--accent)';addGrandBtn.style.color='var(--accent)';};
-      addGrandBtn.onmouseleave=()=>{addGrandBtn.style.borderColor='var(--border2)';addGrandBtn.style.color='var(--text3)';};
-      addGrandBtn.onclick=e=>{
-        e.stopPropagation();
-        if(!child.children) child.children=[];
-        child.children.push({id:Date.now()+Math.random(),name:'孫タスク',phase:child.phase||phase,days:1,startDate:null,endDate:null,children:[]});
-        assignScheduleDates(); renderGantt();
-      };
-    }
 
     const cDel = document.createElement('button');
     cDel.type='button'; cDel.textContent='×';
@@ -4230,13 +4214,12 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
     if (collapseBtn) lcRow.appendChild(collapseBtn);
     lcRow.appendChild(cName);
     lcRow.appendChild(cAssigneeWrap);
-    if (addGrandBtn) lcRow.appendChild(addGrandBtn);
     lcRow.appendChild(cDel);
 
     // 右行・バー
     const today = toDateStr(new Date());
     const rcRow = document.createElement('div');
-    rcRow.style.cssText=`width:${gridW}px;height:${rowH}px;border-bottom:1px solid var(--border);position:relative;overflow:hidden;`;
+    rcRow.style.cssText=`width:${gridW}px;height:${rowH}px;border-bottom:1px solid var(--border);position:relative;overflow:hidden;box-sizing:border-box;`;
     dates.forEach((dt,di)=>{
       const off = isOffDay(dt);
       const isT  = dt === today;
@@ -4258,13 +4241,21 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
     cBarLabel.id = cBarLabelId;
     cBarLabel.textContent = child.name;
 
-    if (hasSubChildren) {
-      // ── タグライン風（子を持つ = 範囲は下層に依存）──
+    if (child.isMilestone) {
+      // ── ダイヤモンド（小タスクのマイルストーン）──
+      const mSize = rowH - 6;
+      const mCenter = cBarLeft + COL_W / 2;
+      cBar.style.cssText = `position:absolute;left:${mCenter - mSize/2}px;top:50%;transform:translateY(-50%) rotate(45deg);width:${mSize}px;height:${mSize}px;background:${phaseColor};border-radius:2px;cursor:pointer;user-select:none;z-index:3;`;
+      cBarLabel.style.cssText = `position:absolute;left:${mCenter + mSize/2 + 4}px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--text2);white-space:nowrap;pointer-events:none;font-family:'DM Sans',sans-serif;z-index:1;`;
+      cBar.addEventListener('click', e => { if(!isGuestMode){ document.querySelectorAll('.gantt-bar-popup').forEach(p=>p.remove()); showBarPopup(e, child); } });
+    } else if (hasSubChildren) {
+      // ── タグライン風（子を持つ小タスク：ドラッグで配下ごと移動）──
       const cDotSz = depth === 1 ? 6 : 5;
       const cLineH = depth === 1 ? 3 : 2;
       const cBarOp = depth === 1 ? 0.65 : 0.45;
       const cBarW  = Math.max(cDotSz * 2 + 2, cW);
-      cBar.style.cssText = `position:absolute;left:${cBarLeft}px;top:50%;transform:translateY(-50%);width:${cBarW}px;height:${cDotSz}px;cursor:default;user-select:none;z-index:2;`;
+      // クリック判定用ヒットエリアを広げるため高さを確保してcursorをgrabに
+      cBar.style.cssText = `position:absolute;left:${cBarLeft}px;top:50%;transform:translateY(-50%);width:${cBarW}px;height:${Math.max(cDotSz, 16)}px;cursor:${isGuestMode?'default':'grab'};user-select:none;z-index:2;`;
       const cLine = document.createElement('div');
       cLine.style.cssText = `position:absolute;left:${cDotSz/2}px;top:50%;transform:translateY(-50%);width:${Math.max(0,cBarW-cDotSz)}px;height:${cLineH}px;background:${phaseColor};opacity:${cBarOp};border-radius:99px;pointer-events:none;`;
       const cDotL = document.createElement('div');
@@ -4273,6 +4264,46 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
       cDotR.style.cssText = `position:absolute;right:0;top:50%;transform:translateY(-50%);width:${cDotSz}px;height:${cDotSz}px;border-radius:50%;background:${phaseColor};opacity:${Math.min(1,cBarOp+0.2)};pointer-events:none;`;
       cBar.appendChild(cLine); cBar.appendChild(cDotL); cBar.appendChild(cDotR);
       cBarLabel.style.cssText = `position:absolute;left:${cBarLeft + cBarW + 4}px;top:50%;transform:translateY(-50%);font-size:${depth===1?'10':'9'}px;color:var(--text3);white-space:nowrap;pointer-events:none;font-family:'DM Sans',sans-serif;z-index:1;`;
+      if (!isGuestMode) {
+        let tagMoved = false;
+        cBar.addEventListener('mousedown', e => {
+          e.preventDefault(); e.stopPropagation();
+          tagMoved = false;
+          cBar.style.cursor = 'grabbing';
+          const startX = e.clientX;
+          const origOff = cOff;
+          const origBarW = cBarW;
+          const onMove = ev => {
+            if (Math.abs(ev.clientX - startX) > 3) tagMoved = true;
+            const cd = Math.round((ev.clientX - startX) / COL_W);
+            const newLeft = Math.max(0, origOff + cd) * COL_W + 1;
+            cBar.style.left = newLeft + 'px';
+            cBarLabel.style.left = (newLeft + origBarW + 4) + 'px';
+          };
+          const onUp = ev => {
+            cBar.style.cursor = 'grab';
+            document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp);
+            const cd = Math.round((ev.clientX - startX) / COL_W);
+            if (cd === 0) return;
+            const shiftItems = items => items && items.forEach(c => {
+              if (c.startDate) c.startDate = addDays(c.startDate, cd);
+              if (c.endDate)   c.endDate   = addDays(c.endDate,   cd);
+              if (c.children)  shiftItems(c.children);
+            });
+            if (child.startDate) child.startDate = addDays(child.startDate, cd);
+            if (child.endDate)   child.endDate   = addDays(child.endDate,   cd);
+            shiftItems(child.children);
+            renderGantt();
+          };
+          document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
+        });
+        cBar.addEventListener('click', e => {
+          if (tagMoved) return;
+          e.stopPropagation();
+          document.querySelectorAll('.gantt-bar-popup').forEach(p=>p.remove());
+          showBarPopup(e, child);
+        });
+      }
     } else {
       // ── フルバー（リーフ = 直接編集可能）──
       cBar.style.cssText=`position:absolute;left:${cBarLeft}px;top:3px;width:${Math.max(4,cW)}px;height:${rowH-8}px;background:${phaseColor}${barAlpha};border-radius:99px;overflow:visible;cursor:grab;user-select:none;z-index:2;`;
@@ -4287,18 +4318,21 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
       cResize.style.cssText=`position:absolute;right:-4px;top:50%;transform:translateY(-50%);width:8px;height:8px;border-radius:50%;background:#fff;opacity:0.85;cursor:ew-resize;z-index:3;box-shadow:0 0 0 1.5px rgba(0,0,0,0.12);`;
       cBar.appendChild(cResize);
 
-      // ドラッグ
+      // ドラッグ（移動量追跡でクリックと区別）
+      let cBarMoved = false;
       cBar.addEventListener('mousedown', e=>{
         if(e.target===cResize||e.target===cResizeLeft) return;
         e.preventDefault(); e.stopPropagation();
         if(tooltip) tooltip.style.display='none';
         cBar.style.cursor='grabbing';
+        cBarMoved = false;
         const origColIdx = cOff;
         const startX = e.clientX;
         const origStart = child.startDate || d.startDate;
         const origEnd   = child.endDate   || addDays(origStart, (child.days||2)-1);
         const barW = parseInt(cBar.style.width);
         const onMove=ev=>{
+          if(Math.abs(ev.clientX-startX)>3) cBarMoved=true;
           const cd=Math.round((ev.clientX-startX)/COL_W);
           const newColIdx=Math.max(0,origColIdx+cd);
           cBar.style.left=(newColIdx*COL_W+1)+'px';
@@ -4316,6 +4350,12 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
           renderGantt();
         };
         document.addEventListener('mousemove',onMove); document.addEventListener('mouseup',onUp);
+      });
+      cBar.addEventListener('click', e=>{
+        if(cBarMoved||isGuestMode) return;
+        e.stopPropagation();
+        document.querySelectorAll('.gantt-bar-popup').forEach(p=>p.remove());
+        showBarPopup(e, child);
       });
 
       // 右リサイズ
@@ -4728,7 +4768,7 @@ function renderGanttByPhase() {
 
       // 右：バー
       const rRow = document.createElement('div');
-      rRow.style.cssText = `width:${gridW}px;height:${ROW_H}px;border-bottom:1px solid var(--border);position:relative;overflow:hidden;`;
+      rRow.style.cssText = `width:${gridW}px;height:${ROW_H}px;border-bottom:1px solid var(--border);position:relative;overflow:hidden;box-sizing:border-box;`;
       dates.forEach((dt, di) => {
         const off = isOffDay(dt); const isT = dt===today;
         const isMStart = dt.endsWith('-01')||dt===d.startDate;
@@ -4795,6 +4835,81 @@ function renderGanttByPhase() {
   gtRightBody.appendChild(rAddPhase);
 
   drawRecurringLines(gtRightBody, dates, COL_W, ROW_H);
+}
+
+// ── スケジュールバークリック時のポップアップ ──
+function showBarPopup(e, item) {
+  e.stopPropagation();
+  document.querySelectorAll('.gantt-bar-popup').forEach(p => p.remove());
+
+  const popup = document.createElement('div');
+  popup.className = 'gantt-bar-popup';
+  popup.style.cssText = `position:fixed;z-index:600;background:var(--bg2);border:1px solid var(--border2);border-radius:10px;padding:12px;min-width:210px;box-shadow:0 8px 28px rgba(0,0,0,.18);`;
+
+  // 位置調整（画面内に収める）
+  const rect = e.currentTarget.getBoundingClientRect();
+  const top = rect.bottom + 6;
+  const left = Math.min(rect.left, window.innerWidth - 230);
+  popup.style.top  = top  + 'px';
+  popup.style.left = left + 'px';
+
+  // タスク名編集
+  const nameLabel = document.createElement('div');
+  nameLabel.style.cssText = `font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px;`;
+  nameLabel.textContent = 'タスク名';
+  popup.appendChild(nameLabel);
+
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.value = item.name || '';
+  nameInput.style.cssText = `width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:7px 9px;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text);outline:none;box-sizing:border-box;transition:border-color .15s;`;
+  nameInput.addEventListener('focus', () => nameInput.style.borderColor = 'var(--accent)');
+  nameInput.addEventListener('blur',  () => nameInput.style.borderColor = 'var(--border2)');
+  nameInput.addEventListener('input', () => { item.name = nameInput.value.trim() || item.name; });
+  nameInput.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter') { ev.preventDefault(); item.name = nameInput.value.trim() || item.name; popup.remove(); renderGantt(); }
+    if (ev.key === 'Escape') { popup.remove(); }
+  });
+  popup.appendChild(nameInput);
+
+  // セパレーター
+  const sep = document.createElement('div');
+  sep.style.cssText = `height:1px;background:var(--border);margin:10px 0;`;
+  popup.appendChild(sep);
+
+  // マイルストーン変更ボタン
+  const msBtn = document.createElement('button');
+  msBtn.type = 'button';
+  msBtn.style.cssText = `display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;background:none;border:1px solid var(--border2);border-radius:7px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:12px;color:var(--text2);transition:all .15s;`;
+  msBtn.onmouseover = () => { msBtn.style.borderColor='var(--accent)'; msBtn.style.color='var(--accent)'; msBtn.style.background='rgba(91,78,245,0.06)'; };
+  msBtn.onmouseout  = () => { msBtn.style.borderColor='var(--border2)'; msBtn.style.color='var(--text2)'; msBtn.style.background='none'; };
+
+  if (item.isMilestone) {
+    msBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1" y="3" width="10" height="6" rx="3" fill="currentColor" opacity=".7"/></svg>バーに戻す`;
+    msBtn.onclick = () => {
+      item.isMilestone = false;
+      item.days = 3;
+      item.endDate = addDays(item.startDate || generatedData.startDate, 2);
+      popup.remove(); renderGantt();
+    };
+  } else {
+    msBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2.5" y="2.5" width="7" height="7" rx="1" transform="rotate(45 6 6)" fill="currentColor"/></svg>マイルストーンに変更`;
+    msBtn.onclick = () => {
+      item.isMilestone = true;
+      item.days = 1;
+      item.endDate = item.startDate || generatedData.startDate;
+      popup.remove(); renderGantt();
+    };
+  }
+  popup.appendChild(msBtn);
+
+  document.body.appendChild(popup);
+  setTimeout(() => nameInput.focus(), 0);
+
+  const closePopup = ev => {
+    if (!popup.contains(ev.target)) { item.name = nameInput.value.trim() || item.name; popup.remove(); document.removeEventListener('mousedown', closePopup); renderGantt(); }
+  };
+  setTimeout(() => document.addEventListener('mousedown', closePopup), 0);
 }
 
 function renderGantt() {
@@ -5290,7 +5405,7 @@ function renderGantt() {
 
       // ── 右：親バー（先に描画行を作成しておく） ──
       const rRow = document.createElement('div');
-      rRow.style.cssText = `width:${gridW}px;height:${ROW_H}px;border-bottom:1px solid var(--border);position:relative;overflow:hidden;`;
+      rRow.style.cssText = `width:${gridW}px;height:${ROW_H}px;border-bottom:1px solid var(--border);position:relative;overflow:hidden;box-sizing:border-box;`;
       dates.forEach((dt,di)=>{
         const off=isOffDay(dt);const isT=dt===today;const isMStart=dt.endsWith('-01')||dt===d.startDate;
         const cell=document.createElement('div');
@@ -5313,20 +5428,93 @@ function renderGantt() {
       const ttName  = container.querySelector('#gt-tt-name');
       const ttDates = container.querySelector('#gt-tt-dates');
 
-      if (itemHasChildren) {
-        // ── タグライン風（子を持つ親：範囲は子層に依存）──
-        const pDotSz = 8;
-        const pLineH = 3;
-        const pBarW  = Math.max(pDotSz * 2 + 2, effectiveBarW);
-        bar.style.cssText = `position:absolute;left:${barLeft}px;top:50%;transform:translateY(-50%);width:${pBarW}px;height:${pDotSz}px;cursor:default;user-select:none;z-index:2;`;
-        const pLine = document.createElement('div');
-        pLine.style.cssText = `position:absolute;left:${pDotSz/2}px;top:50%;transform:translateY(-50%);width:${Math.max(0,pBarW-pDotSz)}px;height:${pLineH}px;background:${phaseColor};opacity:0.7;border-radius:99px;pointer-events:none;`;
-        const pDotL = document.createElement('div');
-        pDotL.style.cssText = `position:absolute;left:0;top:50%;transform:translateY(-50%);width:${pDotSz}px;height:${pDotSz}px;border-radius:50%;background:${phaseColor};opacity:0.85;pointer-events:none;`;
-        const pDotR = document.createElement('div');
-        pDotR.style.cssText = `position:absolute;right:0;top:50%;transform:translateY(-50%);width:${pDotSz}px;height:${pDotSz}px;border-radius:50%;background:${phaseColor};opacity:0.85;pointer-events:none;`;
-        bar.appendChild(pLine); bar.appendChild(pDotL); bar.appendChild(pDotR);
-        barLabel.style.cssText = `position:absolute;left:${barLeft + pBarW + 6}px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);white-space:nowrap;font-family:'DM Sans',sans-serif;pointer-events:none;`;
+      if (item.isMilestone) {
+        // ── ダイヤモンド（マイルストーン）──
+        const mSize = ROW_H - 10;
+        const mCenter = barLeft + COL_W / 2;
+        bar.style.cssText = `position:absolute;left:${mCenter - mSize/2}px;top:50%;transform:translateY(-50%) rotate(45deg);width:${mSize}px;height:${mSize}px;background:${phaseColor};border-radius:3px;cursor:${isGuestMode?'default':'grab'};user-select:none;z-index:3;`;
+        barLabel.style.cssText = `position:absolute;left:${mCenter + mSize/2 + 6}px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text2);white-space:nowrap;font-family:'DM Sans',sans-serif;pointer-events:none;`;
+        if (!isGuestMode) {
+          let msMoved = false;
+          bar.addEventListener('mousedown', e => {
+            e.preventDefault(); e.stopPropagation();
+            msMoved = false;
+            bar.style.cursor = 'grabbing';
+            const startX = e.clientX;
+            const origOff = effectiveOff;
+            const onMove = ev => {
+              if (Math.abs(ev.clientX - startX) > 3) msMoved = true;
+              const cd = Math.round((ev.clientX - startX) / COL_W);
+              const newOff = Math.max(0, origOff + cd);
+              bar.style.left = (newOff * COL_W + COL_W/2 - mSize/2) + 'px';
+              barLabel.style.left = (newOff * COL_W + COL_W/2 + mSize/2 + 6) + 'px';
+            };
+            const onUp = ev => {
+              bar.style.cursor = 'grab';
+              document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp);
+              const cd = Math.round((ev.clientX - startX) / COL_W);
+              if (cd === 0) return;
+              item.startDate = addDays(effectiveStart, cd);
+              item.endDate   = item.startDate;
+              item.days = 1;
+              renderGantt();
+            };
+            document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
+          });
+          bar.addEventListener('click', e => {
+            if (msMoved) return;
+            e.stopPropagation();
+            document.querySelectorAll('.gantt-bar-popup').forEach(p=>p.remove());
+            showBarPopup(e, item);
+          });
+        }
+      } else if (itemHasChildren) {
+        // ── 縦幅あり・濃色フルバー（子を持つ親：ドラッグで配下ごと移動）──
+        const pBarW = Math.max(4, effectiveBarW);
+        bar.style.cssText = `position:absolute;left:${barLeft}px;top:4px;width:${pBarW}px;height:${ROW_H-8}px;background:${phaseColor};border-radius:8px;cursor:${isGuestMode?'default':'grab'};user-select:none;z-index:2;opacity:0.92;`;
+        barLabel.style.cssText = `position:absolute;left:${barLeft + pBarW + 6}px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text2);white-space:nowrap;font-family:'DM Sans',sans-serif;pointer-events:none;`;
+        if (!isGuestMode) {
+          let parentMoved = false;
+          bar.addEventListener('mousedown', e => {
+            e.preventDefault(); e.stopPropagation();
+            parentMoved = false;
+            bar.style.cursor = 'grabbing';
+            tooltip.style.display = 'none';
+            const startX = e.clientX;
+            const origOff = effectiveOff;
+            const onMove = ev => {
+              if (Math.abs(ev.clientX - startX) > 3) parentMoved = true;
+              const cd = Math.round((ev.clientX - startX) / COL_W);
+              const newLeft = Math.max(0, origOff + cd) * COL_W + 1;
+              bar.style.left = newLeft + 'px';
+              barLabel.style.left = (newLeft + pBarW + 6) + 'px';
+            };
+            const onUp = ev => {
+              bar.style.cursor = 'grab';
+              document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp);
+              const cd = Math.round((ev.clientX - startX) / COL_W);
+              if (cd === 0) return;
+              // 親と配下すべてをまとめてずらす
+              const shiftAll = items => items && items.forEach(c => {
+                if (c.startDate) c.startDate = addDays(c.startDate, cd);
+                if (c.endDate)   c.endDate   = addDays(c.endDate,   cd);
+                if (c.children)  shiftAll(c.children);
+              });
+              if (item.startDate) item.startDate = addDays(item.startDate, cd);
+              if (item.endDate)   item.endDate   = addDays(item.endDate,   cd);
+              item.days = Math.max(1, daysBetween(item.startDate, item.endDate) + 1);
+              shiftAll(item.children);
+              renderGantt();
+            };
+            document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
+          });
+          bar.addEventListener('click', e => {
+            if (parentMoved) return;
+            e.stopPropagation();
+            document.querySelectorAll('.gantt-bar-popup').forEach(p=>p.remove());
+            showBarPopup(e, item);
+          });
+        }
       } else {
         // ── フルバー（リーフ：直接編集可能）──
         bar.style.cssText = `position:absolute;left:${barLeft}px;top:6px;width:${Math.max(4,effectiveBarW)}px;height:${ROW_H-12}px;background:${phaseColor}dd;border-radius:99px;box-sizing:border-box;overflow:visible;cursor:${isGuestMode?'default':'grab'};user-select:none;`;
@@ -5373,13 +5561,16 @@ function renderGantt() {
           resizeHandle.style.cssText=`position:absolute;right:-5px;top:50%;transform:translateY(-50%);width:10px;height:10px;border-radius:50%;background:#fff;opacity:0.9;cursor:ew-resize;z-index:3;box-shadow:0 0 0 2px rgba(0,0,0,0.15);`;
           bar.appendChild(resizeHandle);
 
-          // ドラッグ
+          // ドラッグ（移動量を追跡してクリックと区別）
+          let barMoved = false;
           bar.addEventListener('mousedown', e => {
             if (e.target === resizeHandle || e.target === resizeHandleLeft) return;
             e.preventDefault(); tooltip.style.display = 'none'; bar.style.cursor = 'grabbing';
+            barMoved = false;
             const origColIdx = effectiveOff;
             const startX = e.clientX;
             const onMove = ev => {
+              if (Math.abs(ev.clientX - startX) > 3) barMoved = true;
               const colDelta = Math.round((ev.clientX - startX) / COL_W);
               bar.style.left = (Math.max(0, origColIdx + colDelta) * COL_W + 1) + 'px';
             };
@@ -5391,9 +5582,22 @@ function renderGantt() {
               item.startDate = addDays(effectiveStart, finalDelta);
               item.endDate   = addDays(effectiveEnd,   finalDelta);
               item.days = Math.max(1, daysBetween(item.startDate, item.endDate) + 1);
+              // 配下の子・孫も同じ日数ずらす
+              const shiftItems = items => items && items.forEach(c => {
+                if (c.startDate) c.startDate = addDays(c.startDate, finalDelta);
+                if (c.endDate)   c.endDate   = addDays(c.endDate,   finalDelta);
+                if (c.children)  shiftItems(c.children);
+              });
+              shiftItems(item.children);
               renderGantt();
             };
             document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
+          });
+          bar.addEventListener('click', e => {
+            if (barMoved) return;
+            e.stopPropagation();
+            document.querySelectorAll('.gantt-bar-popup').forEach(p=>p.remove());
+            showBarPopup(e, item);
           });
 
           // 右リサイズ
