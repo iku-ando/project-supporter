@@ -154,6 +154,73 @@ function _showApp() {
   syncFromSupabase();
 }
 
+// ─── プロジェクト権限システム ───
+
+// generatedDataにprojectIdがなければUUIDを付与
+function ensureProjectId() {
+  if (!generatedData) return null;
+  if (!generatedData.projectId) generatedData.projectId = generateUUID();
+  return generatedData.projectId;
+}
+
+// ロールに応じてisGuestMode / isMasterRoleを設定
+function applyRolePermissions(role) {
+  currentProjectRole = role;
+  if (role === 'viewer') {
+    isGuestMode  = true;
+    isMasterRole = false;
+  } else if (role === 'editor') {
+    isGuestMode  = false;
+    isMasterRole = false;
+  } else {
+    // 'master' または null（未登録→マスター扱い）
+    isGuestMode  = false;
+    isMasterRole = true;
+  }
+}
+
+// project_membersからロードしてパーミッションを適用
+async function loadProjectRole(projectId) {
+  if (!sbClient || !currentUser) {
+    applyRolePermissions(null); // 未ログイン → フル操作
+    return;
+  }
+  if (!projectId) {
+    applyRolePermissions('master'); // 新規プロジェクト → マスター
+    return;
+  }
+  try {
+    const { data } = await sbClient
+      .from('project_members')
+      .select('role')
+      .eq('project_id', projectId)
+      .eq('user_id', currentUser.id)
+      .single();
+    if (data) {
+      applyRolePermissions(data.role);
+    } else {
+      // 未登録 → 後方互換でマスターに設定して登録
+      applyRolePermissions('master');
+      _registerAsMaster(projectId);
+    }
+  } catch {
+    applyRolePermissions('master');
+  }
+}
+
+// プロジェクトのオーナー（master）として登録（既存レコードがなければ）
+async function _registerAsMaster(projectId) {
+  if (!sbClient || !currentUser || !projectId) return;
+  try {
+    await sbClient.from('project_members').upsert({
+      project_id: projectId,
+      user_id:    currentUser.id,
+      email:      currentUser.email,
+      role:       'master'
+    }, { onConflict: 'project_id,user_id', ignoreDuplicates: true });
+  } catch {}
+}
+
 // ─── CALENDAR PICKER ───
 const calState = {
   start: { year: 0, month: 0, value: null },
@@ -721,6 +788,8 @@ function addDeletedId(id) {
 
 async function saveSnapshot() {
   if (!generatedData) return;
+  // projectIdを確保してからスナップショット作成
+  ensureProjectId();
   const snaps = getSnapshots();
   const now   = new Date();
   const label = `${generatedData.projectName || '無題'} — ${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
@@ -736,8 +805,9 @@ async function saveSnapshot() {
   if (snaps.length > 20) snaps.pop();
   saveSnapshots(snaps);
 
-  // Supabaseにも保存
+  // Supabaseにも保存 + 初回保存時はmasterとして登録
   const ok = await saveToSupabase(snap);
+  _registerAsMaster(generatedData.projectId);
   showSyncStatus(ok ? 'cloud' : 'local');
 
   renderSnapshotList();
@@ -796,7 +866,7 @@ function showSyncBadge(count) {
 }
 
 
-function loadSnapshot(id) {
+async function loadSnapshot(id) {
   const snaps = getSnapshots();
   const snap  = snaps.find(s => s.id === id);
   if (!snap) return;
@@ -807,7 +877,9 @@ function loadSnapshot(id) {
   if (generatedData?.phaseColors) {
     Object.assign(PHASE_BAR_COLORS, generatedData.phaseColors);
   }
-  renderResult(true); // スケジュール日付を保持する
+  // ロールをロードしてからレンダリング
+  await loadProjectRole(generatedData?.projectId);
+  renderResult(true);
   showPanel(2);
   // 現在のタブを維持
   const activeTab = document.querySelector('.main-tab.active');
@@ -4533,7 +4605,8 @@ let ganttLabelWidth = 280;
 let ganttColWidth = 28; // ズーム用カラム幅（デフォルト28px = 100%）
 const GANTT_COL_DEFAULT = 28;
 const GANTT_COL_STEPS = [8, 10, 12, 16, 20, 28, 36, 48]; // ズームステップ
-let isGuestMode = false; // 共有URLからアクセス中は true
+let isGuestMode   = false; // 共有URLまたはviewer権限のとき true
+let isMasterRole  = true;  // master権限のとき true（デフォルトtrue：未ログイン時はフル操作）
 
 // ガント左カラムのドラッグリサイズを初期化する
 function attachGanttColResize(container) {
@@ -4715,9 +4788,9 @@ function renderGanttByPhase() {
     lPhaseRow.style.cssText = `display:flex;align-items:center;background:var(--bg2);border-bottom:1px solid var(--border);height:34px;overflow:hidden;padding:0 10px 0 6px;gap:6px;`;
     lPhaseRow.setAttribute('data-phase-row', phase);
 
-    // ドラッグハンドル（ゲストモードでは非表示）
+    // ドラッグハンドル（masterのみ表示）
     const phaseHandle = document.createElement('div');
-    if (isGuestMode) {
+    if (!isMasterRole) {
       phaseHandle.style.cssText = `width:14px;flex-shrink:0;`;
     } else {
       phaseHandle.style.cssText = `width:14px;flex-shrink:0;cursor:grab;display:flex;flex-direction:column;gap:2px;align-items:center;justify-content:center;opacity:0.2;padding:4px 0;`;
@@ -4736,7 +4809,7 @@ function renderGanttByPhase() {
     lPhaseRow.appendChild(phaseHandle);
     lPhaseRow.appendChild(phaseDot);
     lPhaseRow.appendChild(phaseNameEl);
-    if (!isGuestMode) {
+    if (isMasterRole) {
       // タスク追加ボタン
       const phaseAddBtn = document.createElement('button');
       phaseAddBtn.textContent = '＋ タスク追加';
@@ -4910,8 +4983,8 @@ function renderGanttByPhase() {
     });
   });
 
-  // ── 最下部：フェーズ追加ボタン（ゲストモードでは非表示） ──
-  if (!isGuestMode) {
+  // ── 最下部：フェーズ追加ボタン（masterのみ表示） ──
+  if (isMasterRole) {
     const lAddPhase = document.createElement('div');
     lAddPhase.style.cssText = `display:flex;align-items:center;padding:8px 14px;border-bottom:1px solid var(--border);`;
     const addPhaseBtn = document.createElement('button');
@@ -5161,9 +5234,9 @@ function renderGantt() {
     lPhaseRow.style.cssText = `display:flex;align-items:center;background:var(--bg2);border-bottom:1px solid var(--border);height:34px;overflow:hidden;padding:0 10px 0 6px;gap:6px;`;
     lPhaseRow.setAttribute('data-phase-row', phase);
 
-    // ドラッグハンドル（ゲストモードでは非表示）
+    // ドラッグハンドル（masterのみ表示）
     const phaseHandle = document.createElement('div');
-    if (isGuestMode) {
+    if (!isMasterRole) {
       phaseHandle.style.cssText = `width:14px;flex-shrink:0;`;
     } else {
       phaseHandle.style.cssText = `width:14px;flex-shrink:0;cursor:grab;display:flex;flex-direction:column;gap:2px;align-items:center;justify-content:center;opacity:0.2;`;
@@ -5182,7 +5255,7 @@ function renderGantt() {
     lPhaseRow.appendChild(phaseHandle);
     lPhaseRow.appendChild(phaseDot);
     lPhaseRow.appendChild(phaseNameEl);
-    if (!isGuestMode) {
+    if (isMasterRole) {
       const phaseAddBtn = document.createElement('button');
       phaseAddBtn.textContent = '＋';
       phaseAddBtn.title = 'スケジュールにタスクを追加';
@@ -5310,7 +5383,7 @@ function renderGantt() {
       lRow.setAttribute('data-sched-id', item.id);
       lRow.setAttribute('data-sched-phase', phase);
 
-      // ドラッグハンドル（ゲストモードでは非表示）
+      // ドラッグハンドル（masterのみ表示）
       const handle = document.createElement('div');
       if (isGuestMode) {
         handle.style.cssText = `width:12px;flex-shrink:0;`;
