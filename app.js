@@ -1,85 +1,157 @@
-// ─── GOOGLE AUTH ───
-// Google Cloud ConsoleでOAuth 2.0クライアントIDを取得して設定してください
-// 未設定の場合は認証なしで全機能にアクセスできます
-const GOOGLE_CLIENT_ID = '';
+// ─── SUPABASE AUTH（Magic Link）───
+const AUTH_URL = 'https://vnqxwywryyfvvyrmzbqw.supabase.co';
+const AUTH_KEY = 'sb_publishable_aolqKf_Ro0UkXx025oUg6w_-pZtgtBZ';
 
-let googleUser = null; // { name, email, picture }
+let sbClient = null;
+let currentUser = null; // { id, email, display_name }
+let currentProjectRole = null; // 'master'|'editor'|'viewer'|null
+let appReady = false;
 
-function initGoogleAuth() {
-  if (!GOOGLE_CLIENT_ID) { updateAuthUI(); return; }
-  const stored = localStorage.getItem('_gUser');
-  if (stored) { try { googleUser = JSON.parse(stored); } catch {} }
-  updateAuthUI();
-  const script = document.createElement('script');
-  script.src = 'https://accounts.google.com/gsi/client';
-  script.async = true;
-  script.onload = () => {
-    google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      callback: handleGoogleCredential,
-      auto_select: true,
-      cancel_on_tap_outside: false,
-    });
-    if (!googleUser) google.accounts.id.prompt();
-  };
-  document.head.appendChild(script);
+function initAuth() {
+  if (!window.supabase) { console.warn('Supabase JS未ロード'); _showApp(); return; }
+  sbClient = window.supabase.createClient(AUTH_URL, AUTH_KEY);
+
+  sbClient.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_IN' && session) {
+      currentUser = {
+        id: session.user.id,
+        email: session.user.email,
+        display_name: session.user.user_metadata?.display_name
+          || session.user.email.split('@')[0]
+      };
+      await _ensureProfile();
+      updateAuthUI();
+      _hideLoginModal();
+      _showApp();
+    } else if (event === 'SIGNED_OUT') {
+      currentUser = null;
+      currentProjectRole = null;
+      appReady = false;
+      updateAuthUI();
+      _showLoginModal();
+    }
+  });
+
+  // 既存セッション確認（リロード時）
+  sbClient.auth.getSession().then(({ data: { session } }) => {
+    if (!session) _showLoginModal();
+  });
 }
 
-function handleGoogleCredential(response) {
+async function _ensureProfile() {
+  if (!currentUser || !sbClient) return;
   try {
-    const payload = JSON.parse(atob(response.credential.split('.')[1]));
-    googleUser = { name: payload.name, email: payload.email, picture: payload.picture };
-    localStorage.setItem('_gUser', JSON.stringify(googleUser));
-    updateAuthUI();
-    showToast(`${googleUser.name} でサインインしました`);
-  } catch(e) { console.error('Google auth error:', e); }
+    const { data } = await sbClient.from('profiles').select('display_name').eq('id', currentUser.id).single();
+    if (!data) {
+      await sbClient.from('profiles').insert({ id: currentUser.id, email: currentUser.email, display_name: currentUser.display_name });
+    } else if (data.display_name) {
+      currentUser.display_name = data.display_name;
+    }
+  } catch {}
+}
+
+async function signOut() {
+  if (sbClient) {
+    await sbClient.auth.signOut();
+    showToast('サインアウトしました');
+    showPanel(1);
+  }
 }
 
 function updateAuthUI() {
   const btn = document.getElementById('rail-user');
   if (!btn) return;
-  if (googleUser) {
-    btn.innerHTML = `<img src="${googleUser.picture}" alt="${googleUser.name}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;display:block;">`;
-    btn.title = `${googleUser.name}\nクリックでサインアウト`;
-    btn.onclick = signOutGoogle;
+  if (currentUser) {
+    const initials = (currentUser.display_name || currentUser.email).slice(0, 2).toUpperCase();
+    btn.innerHTML = `<div style="width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;">${initials}</div>`;
+    btn.title = `${currentUser.display_name}（${currentUser.email}）\nクリックでサインアウト`;
+    btn.onclick = () => { if (confirm('サインアウトしますか？')) signOut(); };
   } else {
     btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
-    btn.title = 'Googleでサインイン';
-    btn.onclick = signInWithGoogle;
+    btn.title = 'ログイン';
+    btn.onclick = _showLoginModal;
   }
 }
 
-function signInWithGoogle() {
-  if (!GOOGLE_CLIENT_ID) { showToast('GOOGLE_CLIENT_IDを設定してください'); return; }
-  if (typeof google !== 'undefined') google.accounts.id.prompt();
-}
-
-function signOutGoogle() {
-  googleUser = null;
-  localStorage.removeItem('_gUser');
-  updateAuthUI();
-  showToast('サインアウトしました');
-  showPanel(1);
-}
-
-function showAuthModal() {
+// ─── ログイン画面 ───
+function _showLoginModal() {
+  // 共有URLではログイン不要
+  if (new URLSearchParams(location.search).get('share')) return;
   let modal = document.getElementById('auth-modal');
-  if (modal) { modal.style.display = 'flex'; return; }
-  modal = document.createElement('div');
-  modal.id = 'auth-modal';
-  modal.style.cssText = 'display:flex;position:fixed;inset:0;z-index:9500;align-items:center;justify-content:center;';
-  modal.innerHTML = `
-    <div style="position:absolute;inset:0;background:rgba(0,0,0,.4);" onclick="document.getElementById('auth-modal').style.display='none'"></div>
-    <div style="position:relative;background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:36px 40px;max-width:340px;width:90%;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,.18);z-index:1;">
-      <div style="font-size:36px;margin-bottom:16px;">🔐</div>
-      <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;color:var(--text);margin-bottom:8px;">サインインが必要です</div>
-      <div style="font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text2);margin-bottom:24px;line-height:1.6;">このページを表示するには<br>Googleアカウントでサインインしてください。</div>
-      <button onclick="signInWithGoogle();document.getElementById('auth-modal').style.display='none';" style="display:inline-flex;align-items:center;gap:10px;padding:11px 22px;background:#fff;border:1.5px solid var(--border2);border-radius:8px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;color:var(--text);transition:box-shadow .15s;" onmouseover="this.style.boxShadow='0 2px 12px rgba(0,0,0,.12)'" onmouseout="this.style.boxShadow=''">
-        <svg width="18" height="18" viewBox="0 0 18 18"><path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/><path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/></svg>
-        Googleでサインイン
-      </button>
-    </div>`;
-  document.body.appendChild(modal);
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'auth-modal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;align-items:center;justify-content:center;';
+    modal.innerHTML = `
+      <div style="width:420px;max-width:90vw;background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:44px 40px;box-shadow:0 8px 48px rgba(0,0,0,.12);">
+        <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:700;color:var(--text);margin-bottom:4px;">ProjectFlow</div>
+        <div style="font-size:13px;color:var(--text3);margin-bottom:36px;font-family:'DM Sans',sans-serif;">メールアドレスにログインリンクを送信します</div>
+        <div id="_auth-form">
+          <div style="margin-bottom:14px;">
+            <label style="display:block;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-bottom:6px;">メールアドレス</label>
+            <input id="_auth-email" type="email" placeholder="your@email.com"
+              style="width:100%;padding:11px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;box-sizing:border-box;outline:none;transition:border-color .15s;"
+              onfocus="this.style.borderColor='var(--accent)'"
+              onblur="this.style.borderColor='var(--border)'"
+              onkeydown="if(event.key==='Enter') sendAuthEmail()">
+          </div>
+          <button onclick="sendAuthEmail()" id="_auth-btn"
+            style="width:100%;padding:12px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-family:'Syne',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:opacity .15s;"
+            onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+            ログインリンクを送信
+          </button>
+          <div id="_auth-msg" style="margin-top:10px;font-size:12px;color:#dc2626;text-align:center;min-height:16px;"></div>
+        </div>
+        <div id="_auth-sent" style="display:none;text-align:center;padding:8px 0;">
+          <div style="width:52px;height:52px;border-radius:50%;background:rgba(91,78,245,.1);display:flex;align-items:center;justify-content:center;margin:0 auto 18px;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:var(--text);margin-bottom:8px;">メールを確認してください</div>
+          <div style="font-size:13px;color:var(--text3);line-height:1.7;font-family:'DM Sans',sans-serif;">送信されたリンクをクリックすると<br>ログインが完了します</div>
+          <button onclick="document.getElementById('_auth-sent').style.display='none';document.getElementById('_auth-form').style.display='';"
+            style="margin-top:24px;background:none;border:1px solid var(--border2);border-radius:6px;padding:8px 20px;font-size:12px;color:var(--text3);cursor:pointer;font-family:'DM Sans',sans-serif;">
+            別のアドレスで試す
+          </button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+  modal.style.display = 'flex';
+}
+
+function _hideLoginModal() {
+  const modal = document.getElementById('auth-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function sendAuthEmail() {
+  const input = document.getElementById('_auth-email');
+  const btn   = document.getElementById('_auth-btn');
+  const msg   = document.getElementById('_auth-msg');
+  const email = input?.value?.trim() || '';
+  if (!email || !email.includes('@')) { msg.textContent = '有効なメールアドレスを入力してください'; return; }
+  btn.disabled = true; btn.textContent = '送信中...';
+  try {
+    const { error } = await sbClient.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: location.origin + location.pathname }
+    });
+    if (error) throw error;
+    document.getElementById('_auth-form').style.display = 'none';
+    document.getElementById('_auth-sent').style.display = '';
+  } catch {
+    msg.textContent = '送信に失敗しました。しばらく待ってから再試行してください。';
+    btn.disabled = false; btn.textContent = 'ログインリンクを送信';
+  }
+}
+
+// ─── アプリ起動（ログイン後に呼ぶ）───
+function _showApp() {
+  if (appReady) return;
+  appReady = true;
+  renderSnapshotList();
+  renderDashboard();
+  syncFromSupabase();
 }
 
 // ─── CALENDAR PICKER ───
@@ -362,10 +434,10 @@ const SNAP_KEY = 'pf_snapshots';
 const SUPABASE_URL = 'https://voqsfzvxlgywavtxfquk.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZvcXNmenZ4bGd5d2F2dHhmcXVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4NzMxMzMsImV4cCI6MjA5MDQ0OTEzM30.wAeKaIoTRfnG0kk0jJFuVokzLrvMQp0LUYIHy1vQovU';
 
-// ユーザーキー（このHTMLファイル固有の固定キー）
+// ユーザーキー（ログイン済みならユーザーID、未ログインなら固定キー）
 const FILE_USER_KEY = 'pf_' + 'voqsfzvxlgywavtxfquk_default';
 function getUserKey() {
-  return FILE_USER_KEY;
+  return currentUser ? 'user_' + currentUser.id : FILE_USER_KEY;
 }
 
 // Supabaseにプロジェクトを保存（upsert）
@@ -830,7 +902,6 @@ function showSaveBtn() {
 
 
 function init() {
-  initGoogleAuth();
   initPalette();
 
   const today = new Date();
@@ -844,16 +915,16 @@ function init() {
   addMember('', 'PM', 100);
   initCategoryChips();
 
-  // 共有URLチェック（?share=token）— 先にフラグを立てる
+  // 共有URLは認証不要でそのまま開く
   const shareToken = new URLSearchParams(location.search).get('share');
   if (shareToken) {
     isGuestMode = true;
     handleSharedProjectLoad(shareToken);
-  } else {
-    renderSnapshotList();
-    renderDashboard();
-    syncFromSupabase();
+    return;
   }
+
+  // 通常起動：認証チェック → _showApp() はログイン後に呼ばれる
+  initAuth();
 }
 
 // ─── MEMBERS ───
