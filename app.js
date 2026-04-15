@@ -721,17 +721,27 @@ function getUserKey() {
   return currentUser ? 'user_' + currentUser.id : 'pf_anonymous';
 }
 
+// 認証済みトークンを含むヘッダーを返す
+async function _getAuthHeaders(extra) {
+  let token = SUPABASE_KEY;
+  if (sbClient) {
+    const { data: { session } } = await sbClient.auth.getSession();
+    if (session?.access_token) token = session.access_token;
+  }
+  return { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${token}`, ...extra };
+}
+
 // Supabaseにプロジェクトを保存（upsert）
 async function saveToSupabase(snap) {
+  if (!currentUser) return false;
   try {
+    const headers = await _getAuthHeaders({
+      'Content-Type': 'application/json',
+      'Prefer': 'resolution=merge-duplicates'
+    });
     const res = await fetch(`${SUPABASE_URL}/rest/v1/projects`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SUPABASE_KEY,
-        'Authorization': `Bearer ${SUPABASE_KEY}`,
-        'Prefer': 'resolution=merge-duplicates'
-      },
+      headers,
       body: JSON.stringify({
         user_key: getUserKey(),
         snap_id: String(snap.id),
@@ -751,14 +761,10 @@ async function saveToSupabase(snap) {
 async function loadFromSupabase() {
   if (!currentUser) return null;
   try {
+    const headers = await _getAuthHeaders();
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/projects?user_key=eq.${encodeURIComponent(getUserKey())}&order=saved_at.desc&limit=50`,
-      {
-        headers: {
-          'apikey': SUPABASE_KEY,
-          'Authorization': `Bearer ${SUPABASE_KEY}`
-        }
-      }
+      { headers }
     );
     if (!res.ok) return null;
     const rows = await res.json();
@@ -773,15 +779,10 @@ async function loadFromSupabase() {
 async function deleteFromSupabase(snapId) {
   if (!currentUser) return;
   try {
+    const headers = await _getAuthHeaders();
     await fetch(
       `${SUPABASE_URL}/rest/v1/projects?user_key=eq.${encodeURIComponent(getUserKey())}&snap_id=eq.${snapId}`,
-      {
-        method: 'DELETE',
-        headers: {
-          'apikey': SUPABASE_KEY,
-          'Authorization': `Bearer ${SUPABASE_KEY}`
-        }
-      }
+      { method: 'DELETE', headers }
     );
   } catch (e) {
     console.warn('Supabase削除失敗:', e);
@@ -798,11 +799,7 @@ function generateUUID() {
 }
 
 async function saveSharedProject(token, snap) {
-  const headers = {
-    'Content-Type': 'application/json',
-    'apikey': SUPABASE_KEY,
-    'Authorization': `Bearer ${SUPABASE_KEY}`
-  };
+  const headers = await _getAuthHeaders({ 'Content-Type': 'application/json' });
   try {
     // 既存レコードを削除してから新規挿入（upsert競合を回避）
     await fetch(`${SUPABASE_URL}/rest/v1/projects?user_key=eq.share_${token}`, {
@@ -832,9 +829,10 @@ async function saveSharedProject(token, snap) {
 
 async function loadSharedProject(token) {
   try {
+    const headers = await _getAuthHeaders();
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/projects?user_key=eq.share_${token}&limit=1`,
-      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } }
+      { headers }
     );
     if (!res.ok) return null;
     const rows = await res.json();
