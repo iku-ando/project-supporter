@@ -1226,7 +1226,7 @@ body {
   border: 1px solid var(--border2);
   border-radius: var(--r);
   padding: 16px;
-  z-index: 50;
+  z-index: 500;
   width: 272px;
   box-shadow: 0 12px 40px rgba(0,0,0,0.15);
   animation: calIn 0.15s ease;
