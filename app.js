@@ -12,7 +12,8 @@ function initAuth() {
   sbClient = window.supabase.createClient(AUTH_URL, AUTH_KEY);
 
   sbClient.auth.onAuthStateChange(async (event, session) => {
-    if (event === 'SIGNED_IN' && session) {
+    // INITIAL_SESSION: リロード時の既存セッション / SIGNED_IN: 新規ログイン
+    if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
       currentUser = {
         id: session.user.id,
         email: session.user.email,
@@ -24,6 +25,9 @@ function initAuth() {
       updateAuthUI();
       _hideLoginModal();
       _showApp();
+    } else if (event === 'INITIAL_SESSION' && !session) {
+      // セッションなしの初回ロード
+      _showLoginModal();
     } else if (event === 'SIGNED_OUT') {
       currentUser = null;
       currentProjectRole = null;
@@ -747,17 +751,38 @@ async function saveToSupabase(snap) {
 // Supabaseからプロジェクト一覧を取得
 async function loadFromSupabase() {
   try {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/projects?user_key=eq.${getUserKey()}&order=saved_at.desc&limit=50`,
-      {
-        headers: {
-          'apikey': SUPABASE_KEY,
-          'Authorization': `Bearer ${SUPABASE_KEY}`
+    const headers = {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`
+    };
+    const newKey = getUserKey();
+
+    // 新キー（またはログイン前の固定キー）でまず取得
+    const res1 = await fetch(
+      `${SUPABASE_URL}/rest/v1/projects?user_key=eq.${encodeURIComponent(newKey)}&order=saved_at.desc&limit=50`,
+      { headers }
+    );
+    let rows = res1.ok ? await res1.json() : [];
+
+    // ログイン済みかつ旧キーと別の場合、旧キーでも取得して合算（後方互換）
+    if (currentUser && newKey !== FILE_USER_KEY) {
+      const res2 = await fetch(
+        `${SUPABASE_URL}/rest/v1/projects?user_key=eq.${encodeURIComponent(FILE_USER_KEY)}&order=saved_at.desc&limit=50`,
+        { headers }
+      );
+      if (res2.ok) {
+        const oldRows = await res2.json();
+        if (oldRows.length > 0) {
+          // 重複を除いてマージ
+          const existingIds = new Set(rows.map(r => r.snap_id));
+          const newOldRows = oldRows.filter(r => !existingIds.has(r.snap_id));
+          rows = [...rows, ...newOldRows];
+          // バックグラウンドで新キーにマイグレーション
+          _migrateOldRecords(newOldRows.map(r => r.snap_id));
         }
       }
-    );
-    if (!res.ok) return null;
-    const rows = await res.json();
+    }
+
     return rows.map(r => r.data);
   } catch (e) {
     console.warn('Supabase読み込み失敗:', e);
@@ -765,11 +790,39 @@ async function loadFromSupabase() {
   }
 }
 
+// 旧ユーザーキーのレコードを新キーにマイグレーション
+async function _migrateOldRecords(snapIds) {
+  try {
+    const newKey = getUserKey();
+    for (const snapId of snapIds) {
+      await fetch(
+        `${SUPABASE_URL}/rest/v1/projects?user_key=eq.${FILE_USER_KEY}&snap_id=eq.${snapId}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`
+          },
+          body: JSON.stringify({ user_key: newKey })
+        }
+      );
+    }
+    console.log(`旧レコード ${snapIds.length}件 を新キーにマイグレーションしました`);
+  } catch (e) {
+    console.warn('マイグレーション失敗:', e);
+  }
+}
+
 // Supabaseから特定プロジェクトを削除
 async function deleteFromSupabase(snapId) {
   try {
+    const newKey = getUserKey();
+    const keys = (currentUser && newKey !== FILE_USER_KEY)
+      ? [newKey, FILE_USER_KEY]
+      : [newKey];
     await fetch(
-      `${SUPABASE_URL}/rest/v1/projects?user_key=eq.${getUserKey()}&data->>id=eq.${snapId}`,
+      `${SUPABASE_URL}/rest/v1/projects?user_key=in.(${keys.join(',')})&snap_id=eq.${snapId}`,
       {
         method: 'DELETE',
         headers: {
