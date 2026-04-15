@@ -6399,10 +6399,10 @@ function exportExcel() {
 function doExport(d) {
   try {
     const wb = XLSX.utils.book_new();
+    const priLabel = { high: '高', mid: '中', low: '低' };
 
     // ── Sheet1: タスク一覧 ──
     const taskRows = [['メンバー', 'ロール', 'タスク名', 'フェーズ', '優先度', '開始日', '終了日', '工数(日)', '説明']];
-    const priLabel = { high: '高', mid: '中', low: '低' };
     (d.members || []).forEach(m => {
       (m.tasks || []).forEach(t => {
         taskRows.push([
@@ -6413,13 +6413,15 @@ function doExport(d) {
       });
     });
     const ws1 = XLSX.utils.aoa_to_sheet(taskRows);
-    ws1['!cols'] = [
-      {wch:14},{wch:18},{wch:24},{wch:10},{wch:6},
-      {wch:12},{wch:12},{wch:8},{wch:36}
-    ];
+    ws1['!cols'] = [{wch:14},{wch:18},{wch:24},{wch:10},{wch:6},{wch:12},{wch:12},{wch:8},{wch:36}];
+    // ヘッダー行スタイル
+    ['A1','B1','C1','D1','E1','F1','G1','H1','I1'].forEach(ref => {
+      if (!ws1[ref]) ws1[ref] = { v: '' };
+      ws1[ref].s = { font:{bold:true,color:{rgb:'FFFFFF'}}, fill:{patternType:'solid',fgColor:{rgb:'1F1A14'}}, alignment:{horizontal:'center'} };
+    });
     XLSX.utils.book_append_sheet(wb, ws1, 'タスク一覧');
 
-    // ── Sheet2: ガントチャート ──
+    // ── Sheet2: スケジュール（ビジュアルガント）──
     if (d.startDate && d.endDate) {
       const totalDays = Math.max(1, daysBetween(d.startDate, d.endDate) + 1);
       const dates = [];
@@ -6428,57 +6430,131 @@ function doExport(d) {
         dd.setDate(dd.getDate() + i);
         dates.push(toDateStr(dd));
       }
+      const DOW = ['日','月','火','水','木','金','土'];
 
+      // ヘッダー3行
       const monthRow = [''];
-      const dayRow2  = ['タスク'];
-      const monthGroups2 = [];
-      let curMonth = null;
-      dates.forEach(dt => {
-        const [y, m] = dt.split('-');
-        const key = `${y}-${m}`;
-        if (!curMonth || curMonth.key !== key) {
-          curMonth = { key, label: `${parseInt(y)}年${parseInt(m)}月`, count: 0 };
-          monthGroups2.push(curMonth);
-        }
-        curMonth.count++;
-        dayRow2.push(parseInt(dt.split('-')[2]));
-      });
-      monthGroups2.forEach(mg => {
-        monthRow.push(mg.label);
-        for (let i = 1; i < mg.count; i++) monthRow.push('');
-      });
+      const dayRow   = [''];
+      const dowRow   = ['タスク名'];
+      const merges   = [];
+      let mStart = 1, curMKey = null;
 
-      const ganttData = [monthRow, dayRow2];
+      dates.forEach((dt, i) => {
+        const [y, m, day] = dt.split('-');
+        const key = `${y}-${m}`;
+        const dow = new Date(parseInt(y), parseInt(m)-1, parseInt(day)).getDay();
+        dayRow.push(parseInt(day));
+        dowRow.push(DOW[dow]);
+        if (curMKey !== key) {
+          if (curMKey !== null) merges.push({s:{r:0,c:mStart},e:{r:0,c:i}});
+          monthRow.push(`${parseInt(y)}年${parseInt(m)}月`);
+          curMKey = key; mStart = i + 1;
+        } else {
+          monthRow.push('');
+        }
+      });
+      merges.push({s:{r:0,c:mStart},e:{r:0,c:dates.length}});
+
+      const rows = [monthRow, dayRow, dowRow];
+      let rowIdx = 3;
+
+      // フェーズカラー（#を除いた大文字RGB）
+      const phaseRgb = phase => {
+        const c = PHASE_BAR_COLORS[phase] || getBarColor(phase);
+        return c.replace('#','').toUpperCase();
+      };
+
       (d.members || []).forEach(m => {
-        const memberRow = new Array(dates.length + 1).fill('');
-        memberRow[0] = `▶ ${m.name}（${m.role}）`;
-        ganttData.push(memberRow);
+        // メンバーヘッダー行
+        const mRow = new Array(dates.length + 1).fill('');
+        mRow[0] = `${m.name}（${m.role}）`;
+        rows.push(mRow);
+        merges.push({s:{r:rowIdx,c:0},e:{r:rowIdx,c:dates.length}});
+        rowIdx++;
+
         (m.tasks || []).forEach(t => {
           const row = new Array(dates.length + 1).fill('');
           row[0] = t.name;
+          rows.push(row);
           const startOff = Math.max(0, daysBetween(d.startDate, t.startDate || d.startDate));
-          const endOff = Math.min(dates.length - 1, daysBetween(d.startDate, t.endDate || d.endDate));
-          for (let i = startOff; i <= endOff; i++) row[i + 1] = '■';
-          ganttData.push(row);
+          const endOff   = Math.min(dates.length - 1, daysBetween(d.startDate, t.endDate || d.endDate));
+          // バーセルにフェーズ色を記録（後でスタイル適用）
+          t._xlRow = rowIdx;
+          t._xlS   = startOff;
+          t._xlE   = endOff;
+          t._xlRgb = phaseRgb(t.phase);
+          rowIdx++;
         });
       });
 
-      const ws2 = XLSX.utils.aoa_to_sheet(ganttData);
-      ws2['!cols'] = [{wch:24}, ...dates.map(() => ({wch:3}))];
-      XLSX.utils.book_append_sheet(wb, ws2, 'ガントチャート');
+      const ws2 = XLSX.utils.aoa_to_sheet(rows);
+      ws2['!cols']   = [{wch:22}, ...dates.map(() => ({wch:2.5}))];
+      ws2['!merges'] = merges;
+
+      // ── スタイル適用 ──
+      const setStyle = (r, c, s) => {
+        const ref = XLSX.utils.encode_cell({r, c});
+        if (!ws2[ref]) ws2[ref] = {v:''};
+        ws2[ref].s = s;
+      };
+
+      // 月ヘッダー行（row0）
+      for (let c = 0; c <= dates.length; c++) {
+        setStyle(0, c, {font:{bold:true,color:{rgb:'FFFFFF'}},fill:{patternType:'solid',fgColor:{rgb:'1F1A14'}},alignment:{horizontal:'center'}});
+      }
+      // 日付行（row1）
+      dates.forEach((dt, i) => {
+        setStyle(1, i+1, {font:{bold:true,color:{rgb:'FFFFFF'}},fill:{patternType:'solid',fgColor:{rgb:'3D3280'}},alignment:{horizontal:'center'}});
+      });
+      setStyle(1, 0, {font:{bold:true,color:{rgb:'FFFFFF'}},fill:{patternType:'solid',fgColor:{rgb:'1F1A14'}}});
+      // 曜日行（row2）: 土=青・日=赤・平日=グレー
+      dates.forEach((dt, i) => {
+        const [y, m, day] = dt.split('-');
+        const dow = new Date(parseInt(y), parseInt(m)-1, parseInt(day)).getDay();
+        const bg = dow===0 ? 'C0392B' : dow===6 ? '2980B9' : '4A4080';
+        setStyle(2, i+1, {font:{bold:true,color:{rgb:'FFFFFF'}},fill:{patternType:'solid',fgColor:{rgb:bg}},alignment:{horizontal:'center'}});
+      });
+      setStyle(2, 0, {font:{bold:true,color:{rgb:'FFFFFF'}},fill:{patternType:'solid',fgColor:{rgb:'1F1A14'}}});
+
+      // メンバー行 & タスクバー
+      let ri = 3;
+      (d.members || []).forEach(m => {
+        // メンバー行: 全列ダーク
+        for (let c = 0; c <= dates.length; c++) {
+          setStyle(ri, c, {font:{bold:true,color:{rgb:'FFFFFF'}},fill:{patternType:'solid',fgColor:{rgb:'2D2460'}}});
+        }
+        ri++;
+        (m.tasks || []).forEach(t => {
+          // タスク名セル
+          setStyle(ri, 0, {alignment:{horizontal:'left'}});
+          // バーセル
+          for (let i = t._xlS; i <= t._xlE; i++) {
+            setStyle(ri, i+1, {fill:{patternType:'solid',fgColor:{rgb:t._xlRgb}}});
+          }
+          // バー外の日付列を薄グレーに
+          dates.forEach((dt, i) => {
+            if (i < t._xlS || i > t._xlE) {
+              const [y, m2, day] = dt.split('-');
+              const dow = new Date(parseInt(y), parseInt(m2)-1, parseInt(day)).getDay();
+              const bg = (dow===0||dow===6) ? 'F0EEF8' : 'FAFAFA';
+              setStyle(ri, i+1, {fill:{patternType:'solid',fgColor:{rgb:bg}}});
+            }
+          });
+          ri++;
+        });
+      });
+
+      XLSX.utils.book_append_sheet(wb, ws2, 'スケジュール');
     }
 
-    // Blob方式でダウンロード（ブラウザ互換性が高い）
+    // Blob方式でダウンロード
     const projName = (d.projectName || 'project').replace(/[/\\?%*:|"<>]/g, '_');
-    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    const blob = new Blob([wbout], { type: 'application/octet-stream' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${projName}_スケジュール.xlsx`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const wbout = XLSX.write(wb, { bookType:'xlsx', type:'array', cellStyles:true });
+    const blob = new Blob([wbout], { type:'application/octet-stream' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = `${projName}_スケジュール.xlsx`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch (e) {
     console.error('Excel出力エラー:', e);
