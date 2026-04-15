@@ -712,14 +712,13 @@ function renderCustomRoleTags() {
 // ─── SNAPSHOT ───
 const SNAP_KEY = 'pf_snapshots';
 
-// ─── SUPABASE CONFIG ───
-const SUPABASE_URL = 'https://voqsfzvxlgywavtxfquk.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZvcXNmenZ4bGd5d2F2dHhmcXVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4NzMxMzMsImV4cCI6MjA5MDQ0OTEzM30.wAeKaIoTRfnG0kk0jJFuVokzLrvMQp0LUYIHy1vQovU';
+// ─── SUPABASE CONFIG（auth projectに統合）───
+const SUPABASE_URL = AUTH_URL;  // 'https://vnqxwywryyfvvyrmzbqw.supabase.co'
+const SUPABASE_KEY = AUTH_KEY;  // sb_publishable_...
 
-// ユーザーキー（ログイン済みならユーザーID、未ログインなら固定キー）
-const FILE_USER_KEY = 'pf_' + 'voqsfzvxlgywavtxfquk_default';
+// ユーザーキー（ログイン済みならユーザーID）
 function getUserKey() {
-  return currentUser ? 'user_' + currentUser.id : FILE_USER_KEY;
+  return currentUser ? 'user_' + currentUser.id : 'pf_anonymous';
 }
 
 // Supabaseにプロジェクトを保存（upsert）
@@ -750,39 +749,19 @@ async function saveToSupabase(snap) {
 
 // Supabaseからプロジェクト一覧を取得
 async function loadFromSupabase() {
+  if (!currentUser) return null;
   try {
-    const headers = {
-      'apikey': SUPABASE_KEY,
-      'Authorization': `Bearer ${SUPABASE_KEY}`
-    };
-    const newKey = getUserKey();
-
-    // 新キー（またはログイン前の固定キー）でまず取得
-    const res1 = await fetch(
-      `${SUPABASE_URL}/rest/v1/projects?user_key=eq.${encodeURIComponent(newKey)}&order=saved_at.desc&limit=50`,
-      { headers }
-    );
-    let rows = res1.ok ? await res1.json() : [];
-
-    // ログイン済みかつ旧キーと別の場合、旧キーでも取得して合算（後方互換）
-    if (currentUser && newKey !== FILE_USER_KEY) {
-      const res2 = await fetch(
-        `${SUPABASE_URL}/rest/v1/projects?user_key=eq.${encodeURIComponent(FILE_USER_KEY)}&order=saved_at.desc&limit=50`,
-        { headers }
-      );
-      if (res2.ok) {
-        const oldRows = await res2.json();
-        if (oldRows.length > 0) {
-          // 重複を除いてマージ
-          const existingIds = new Set(rows.map(r => r.snap_id));
-          const newOldRows = oldRows.filter(r => !existingIds.has(r.snap_id));
-          rows = [...rows, ...newOldRows];
-          // バックグラウンドで新キーにマイグレーション
-          _migrateOldRecords(newOldRows.map(r => r.snap_id));
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/projects?user_key=eq.${encodeURIComponent(getUserKey())}&order=saved_at.desc&limit=50`,
+      {
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`
         }
       }
-    }
-
+    );
+    if (!res.ok) return null;
+    const rows = await res.json();
     return rows.map(r => r.data);
   } catch (e) {
     console.warn('Supabase読み込み失敗:', e);
@@ -790,39 +769,12 @@ async function loadFromSupabase() {
   }
 }
 
-// 旧ユーザーキーのレコードを新キーにマイグレーション
-async function _migrateOldRecords(snapIds) {
-  try {
-    const newKey = getUserKey();
-    for (const snapId of snapIds) {
-      await fetch(
-        `${SUPABASE_URL}/rest/v1/projects?user_key=eq.${FILE_USER_KEY}&snap_id=eq.${snapId}`,
-        {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': SUPABASE_KEY,
-            'Authorization': `Bearer ${SUPABASE_KEY}`
-          },
-          body: JSON.stringify({ user_key: newKey })
-        }
-      );
-    }
-    console.log(`旧レコード ${snapIds.length}件 を新キーにマイグレーションしました`);
-  } catch (e) {
-    console.warn('マイグレーション失敗:', e);
-  }
-}
-
 // Supabaseから特定プロジェクトを削除
 async function deleteFromSupabase(snapId) {
+  if (!currentUser) return;
   try {
-    const newKey = getUserKey();
-    const keys = (currentUser && newKey !== FILE_USER_KEY)
-      ? [newKey, FILE_USER_KEY]
-      : [newKey];
     await fetch(
-      `${SUPABASE_URL}/rest/v1/projects?user_key=in.(${keys.join(',')})&snap_id=eq.${snapId}`,
+      `${SUPABASE_URL}/rest/v1/projects?user_key=eq.${encodeURIComponent(getUserKey())}&snap_id=eq.${snapId}`,
       {
         method: 'DELETE',
         headers: {
@@ -2719,7 +2671,7 @@ function closeSidebar() {
 }
 
 function showPanel(n) {
-  if (n === 0 && GOOGLE_CLIENT_ID && !googleUser) { showAuthModal(); return; }
+  if (n === 0 && !currentUser) { _showLoginModal(); return; }
   const doShow = () => {
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.nav-step').forEach(s => s.classList.remove('active'));
@@ -7684,7 +7636,7 @@ function renderMemberPanelBody() {}
 
 // ─── PROJECT RAIL ───
 function toggleProjectRail() {
-  if (GOOGLE_CLIENT_ID && !googleUser) { showAuthModal(); return; }
+  if (!currentUser) { _showLoginModal(); return; }
   const panel = document.getElementById('proj-rail-panel');
   const overlay = document.getElementById('proj-rail-overlay');
   const isOpen = panel.style.left === '54px';
