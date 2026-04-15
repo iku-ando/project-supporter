@@ -20,6 +20,7 @@ function initAuth() {
           || session.user.email.split('@')[0]
       };
       await _ensureProfile();
+      await _acceptPendingInvitations();
       updateAuthUI();
       _hideLoginModal();
       _showApp();
@@ -152,6 +153,216 @@ function _showApp() {
   renderSnapshotList();
   renderDashboard();
   syncFromSupabase();
+}
+
+// ─── メンバー管理・招待 ───
+
+// プロジェクトの現在のメンバー一覧を取得
+async function loadProjectMembers(projectId) {
+  if (!sbClient || !projectId) return [];
+  try {
+    const { data } = await sbClient
+      .from('project_members')
+      .select('user_id, email, role, created_at')
+      .eq('project_id', projectId)
+      .order('created_at');
+    return data || [];
+  } catch { return []; }
+}
+
+// メンバーを招待（既存ユーザーは即時追加、未登録は招待メール送信）
+async function inviteMember(email, role) {
+  if (!sbClient || !currentUser || !generatedData?.projectId) return { error: '設定エラー' };
+  const projectId = generatedData.projectId;
+  try {
+    // 既存ユーザー確認
+    const { data: profile } = await sbClient
+      .from('profiles').select('id').eq('email', email).single();
+
+    if (profile) {
+      // 登録済み → project_members に直接追加
+      const { error } = await sbClient.from('project_members').upsert({
+        project_id: projectId,
+        user_id:    profile.id,
+        email,
+        role
+      }, { onConflict: 'project_id,user_id' });
+      if (error) throw error;
+      return { status: 'added' };
+    } else {
+      // 未登録 → invitations に追加してマジックリンク送信
+      await sbClient.from('invitations').upsert({
+        project_id:  projectId,
+        email,
+        role,
+        invited_by:  currentUser.id,
+        status:      'pending'
+      }, { onConflict: 'project_id,email' });
+      const { error } = await sbClient.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: location.origin + location.pathname }
+      });
+      if (error) throw error;
+      return { status: 'invited' };
+    }
+  } catch (e) {
+    return { error: e.message || '招待に失敗しました' };
+  }
+}
+
+// メンバーをプロジェクトから削除（master のみ可）
+async function removeMember(userId) {
+  if (!sbClient || !isMasterRole || !generatedData?.projectId) return false;
+  if (userId === currentUser?.id) { showToast('自分自身は削除できません'); return false; }
+  try {
+    await sbClient.from('project_members')
+      .delete()
+      .eq('project_id', generatedData.projectId)
+      .eq('user_id', userId);
+    return true;
+  } catch { return false; }
+}
+
+// ログイン時：保留中の招待を自動承認
+async function _acceptPendingInvitations() {
+  if (!sbClient || !currentUser) return;
+  try {
+    const { data: invites } = await sbClient
+      .from('invitations')
+      .select('*')
+      .eq('email', currentUser.email)
+      .eq('status', 'pending');
+    if (!invites?.length) return;
+    for (const inv of invites) {
+      await sbClient.from('project_members').upsert({
+        project_id: inv.project_id,
+        user_id:    currentUser.id,
+        email:      currentUser.email,
+        role:       inv.role
+      }, { onConflict: 'project_id,user_id', ignoreDuplicates: true });
+      await sbClient.from('invitations').update({ status: 'accepted' }).eq('id', inv.id);
+    }
+    if (invites.length > 0) showToast(`${invites.length}件のプロジェクトに参加しました`);
+  } catch {}
+}
+
+// メンバー管理モーダルを表示
+async function showMemberModal() {
+  const projectId = generatedData?.projectId;
+  if (!projectId) { showToast('先にプロジェクトを保存してください'); return; }
+
+  // 既存モーダルを削除
+  document.getElementById('member-modal')?.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'member-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:8000;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;';
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+
+  modal.innerHTML = `
+    <div style="width:480px;max-width:92vw;max-height:80vh;background:var(--bg2);border:1px solid var(--border);border-radius:14px;display:flex;flex-direction:column;box-shadow:0 8px 48px rgba(0,0,0,.18);overflow:hidden;">
+      <div style="padding:20px 24px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+        <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);">メンバー管理</div>
+        <button onclick="document.getElementById('member-modal').remove()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;line-height:1;padding:2px 6px;">×</button>
+      </div>
+      <div style="padding:20px 24px;overflow-y:auto;flex:1;">
+        <div id="member-list-wrap">
+          <div style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:10px;">現在のメンバー</div>
+          <div id="member-list" style="display:flex;flex-direction:column;gap:6px;">
+            <div style="font-size:12px;color:var(--text3);">読み込み中...</div>
+          </div>
+        </div>
+        <div style="margin-top:24px;border-top:1px solid var(--border);padding-top:20px;">
+          <div style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:12px;">メンバーを招待</div>
+          <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <input id="invite-email" type="email" placeholder="メールアドレス"
+              style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;transition:border-color .15s;"
+              onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
+              onkeydown="if(event.key==='Enter') submitInvite()">
+            <select id="invite-role"
+              style="padding:9px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;cursor:pointer;">
+              <option value="editor">編集</option>
+              <option value="viewer">閲覧</option>
+              <option value="master">マスター</option>
+            </select>
+          </div>
+          <button onclick="submitInvite()"
+            style="width:100%;padding:10px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-family:'Syne',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:opacity .15s;"
+            onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+            招待する
+          </button>
+          <div id="invite-msg" style="margin-top:8px;font-size:12px;text-align:center;min-height:16px;"></div>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  // メンバー一覧をロード
+  _renderMemberList(projectId);
+}
+
+async function _renderMemberList(projectId) {
+  const listEl = document.getElementById('member-list');
+  if (!listEl) return;
+  const members = await loadProjectMembers(projectId);
+  if (!members.length) {
+    listEl.innerHTML = `<div style="font-size:12px;color:var(--text3);">メンバーがいません</div>`;
+    return;
+  }
+  const roleLabel = { master: 'マスター', editor: '編集', viewer: '閲覧' };
+  const roleColor = { master: 'var(--accent)', editor: 'var(--green)', viewer: 'var(--text3)' };
+  listEl.innerHTML = members.map(m => {
+    const isMe = m.user_id === currentUser?.id;
+    const initials = m.email.slice(0, 2).toUpperCase();
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:var(--bg3);border:1px solid var(--border);">
+        <div style="width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;flex-shrink:0;">${initials}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${m.email}${isMe ? ' <span style="font-size:10px;color:var(--text3);">（あなた）</span>' : ''}</div>
+        </div>
+        <span style="font-family:'DM Mono',monospace;font-size:10px;color:${roleColor[m.role]||'var(--text3)'};background:${roleColor[m.role]||'var(--text3)'}1a;padding:2px 8px;border-radius:4px;flex-shrink:0;">${roleLabel[m.role]||m.role}</span>
+        ${isMasterRole && !isMe ? `<button onclick="_doRemoveMember('${m.user_id}')" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:2px 4px;border-radius:4px;transition:color .15s;" onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='var(--text3)'" title="削除">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>` : ''}
+      </div>`;
+  }).join('');
+}
+
+async function _doRemoveMember(userId) {
+  if (!confirm('このメンバーをプロジェクトから削除しますか？')) return;
+  const ok = await removeMember(userId);
+  if (ok) {
+    showToast('メンバーを削除しました');
+    _renderMemberList(generatedData?.projectId);
+  }
+}
+
+async function submitInvite() {
+  const email = document.getElementById('invite-email')?.value?.trim() || '';
+  const role  = document.getElementById('invite-role')?.value || 'editor';
+  const msg   = document.getElementById('invite-msg');
+  if (!email || !email.includes('@')) { msg.textContent = '有効なメールアドレスを入力してください'; msg.style.color='#dc2626'; return; }
+
+  const btn = document.querySelector('#member-modal button[onclick="submitInvite()"]');
+  if (btn) { btn.disabled = true; btn.textContent = '処理中...'; }
+
+  const result = await inviteMember(email, role);
+
+  if (btn) { btn.disabled = false; btn.textContent = '招待する'; }
+
+  if (result.error) {
+    msg.textContent = result.error;
+    msg.style.color = '#dc2626';
+  } else if (result.status === 'added') {
+    msg.textContent = `${email} をプロジェクトに追加しました`;
+    msg.style.color = 'var(--green)';
+    document.getElementById('invite-email').value = '';
+    _renderMemberList(generatedData?.projectId);
+  } else {
+    msg.textContent = `招待メールを ${email} に送信しました`;
+    msg.style.color = 'var(--green)';
+    document.getElementById('invite-email').value = '';
+  }
 }
 
 // ─── プロジェクト権限システム ───
@@ -6366,6 +6577,24 @@ function renderResult(keepSchedule = false) {
   // Board
   syncMemberUI();
   if (mtgPanelOpen) renderMtgList();
+
+  // メンバー管理ボタン（masterのみ表示）
+  const existingMemberBtn = document.getElementById('member-mgmt-btn');
+  if (existingMemberBtn) existingMemberBtn.remove();
+  if (isMasterRole && sbClient) {
+    const settingsBtn = document.getElementById('proj-settings-btn');
+    if (settingsBtn) {
+      const memberBtn = document.createElement('button');
+      memberBtn.id = 'member-mgmt-btn';
+      memberBtn.title = 'メンバー管理';
+      memberBtn.onclick = showMemberModal;
+      memberBtn.onmouseover = function() { this.style.borderColor='var(--accent)'; this.style.color='var(--accent)'; };
+      memberBtn.onmouseout  = function() { this.style.borderColor='var(--border2)'; this.style.color='var(--text2)'; };
+      memberBtn.style.cssText = 'display:flex;align-items:center;justify-content:center;width:36px;height:36px;background:var(--bg2);border:1px solid var(--border2);border-radius:8px;cursor:pointer;transition:all .2s;color:var(--text2);';
+      memberBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="7" r="3.5" stroke="currentColor" stroke-width="1.4"/><path d="M2 21c0-3.87 3.13-7 7-7s7 3.13 7 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M19 8v6M22 11h-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+      settingsBtn.parentElement.insertBefore(memberBtn, settingsBtn);
+    }
+  }
 }
 
 // ─── SUB TAB (カンバン / MTGメモ) ───
