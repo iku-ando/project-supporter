@@ -89,7 +89,7 @@ function _showLoginModal() {
     modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;align-items:center;justify-content:center;';
     modal.innerHTML = `
       <div style="width:420px;max-width:90vw;background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:44px 40px;box-shadow:0 8px 48px rgba(0,0,0,.12);">
-        <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:700;color:var(--text);margin-bottom:4px;">ProjectFlow</div>
+        <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:700;color:var(--text);margin-bottom:4px;">Project Supporter</div>
         <div style="font-size:13px;color:var(--text3);margin-bottom:36px;font-family:'DM Sans',sans-serif;">メールアドレスにログインリンクを送信します</div>
         <div id="_auth-form">
           <div style="margin-bottom:14px;">
@@ -6397,95 +6397,93 @@ function exportExcel() {
 }
 
 function doExport(d) {
-  const wb = XLSX.utils.book_new();
+  try {
+    const wb = XLSX.utils.book_new();
 
-  // ── Sheet1: タスク一覧 ──
-  const taskRows = [['メンバー', 'ロール', 'タスク名', 'フェーズ', '優先度', '開始日', '終了日', '工数(日)', '説明']];
-  const priLabel = { high: '高', mid: '中', low: '低' };
-  d.members.forEach(m => {
-    m.tasks.forEach(t => {
-      taskRows.push([
-        m.name, m.role, t.name, t.phase,
-        priLabel[t.priority] || t.priority,
-        t.startDate, t.endDate, t.days, t.description || ''
-      ]);
+    // ── Sheet1: タスク一覧 ──
+    const taskRows = [['メンバー', 'ロール', 'タスク名', 'フェーズ', '優先度', '開始日', '終了日', '工数(日)', '説明']];
+    const priLabel = { high: '高', mid: '中', low: '低' };
+    (d.members || []).forEach(m => {
+      (m.tasks || []).forEach(t => {
+        taskRows.push([
+          m.name, m.role, t.name, t.phase,
+          priLabel[t.priority] || t.priority,
+          t.startDate || '', t.endDate || '', t.days || '', t.description || ''
+        ]);
+      });
     });
-  });
-  const ws1 = XLSX.utils.aoa_to_sheet(taskRows);
+    const ws1 = XLSX.utils.aoa_to_sheet(taskRows);
+    ws1['!cols'] = [
+      {wch:14},{wch:18},{wch:24},{wch:10},{wch:6},
+      {wch:12},{wch:12},{wch:8},{wch:36}
+    ];
+    XLSX.utils.book_append_sheet(wb, ws1, 'タスク一覧');
 
-  // 列幅設定
-  ws1['!cols'] = [
-    {wch:14},{wch:18},{wch:24},{wch:10},{wch:6},
-    {wch:12},{wch:12},{wch:8},{wch:36}
-  ];
-
-  // ヘッダー行スタイル
-  const headerStyle = { font:{bold:true}, fill:{fgColor:{rgb:'1A1A24'}}, alignment:{horizontal:'center'} };
-  ['A1','B1','C1','D1','E1','F1','G1','H1','I1'].forEach(ref => {
-    if (ws1[ref]) ws1[ref].s = headerStyle;
-  });
-
-  XLSX.utils.book_append_sheet(wb, ws1, 'タスク一覧');
-
-  // ── Sheet2: ガントチャート ──
-  const totalDays = daysBetween(d.startDate, d.endDate) + 1;
-  const dates = [];
-  for (let i = 0; i < totalDays; i++) {
-    const dd = parseDate(d.startDate);
-    dd.setDate(dd.getDate() + i);
-    dates.push(toDateStr(dd));
-  }
-
-  // 月ヘッダー行
-  const monthRow = [''];
-  const dayRow2  = ['タスク'];
-  const monthGroups2 = [];
-  let curMonth = null;
-  dates.forEach(dt => {
-    const [y, m] = dt.split('-');
-    const key = `${y}-${m}`;
-    if (!curMonth || curMonth.key !== key) {
-      curMonth = { key, label: `${parseInt(y)}年${parseInt(m)}月`, count: 0 };
-      monthGroups2.push(curMonth);
-    }
-    curMonth.count++;
-    dayRow2.push(parseInt(dt.split('-')[2]));
-  });
-  let colIdx = 1;
-  monthGroups2.forEach(mg => {
-    monthRow.push(mg.label);
-    for (let i = 1; i < mg.count; i++) monthRow.push('');
-    colIdx += mg.count;
-  });
-
-  const ganttData = [monthRow, dayRow2];
-
-  d.members.forEach(m => {
-    // メンバー行
-    const memberRow = new Array(dates.length + 1).fill('');
-    memberRow[0] = `▶ ${m.name}（${m.role}）`;
-    ganttData.push(memberRow);
-
-    m.tasks.forEach(t => {
-      const row = new Array(dates.length + 1).fill('');
-      row[0] = t.name;
-      const startOff = Math.max(0, daysBetween(d.startDate, t.startDate));
-      const endOff = Math.min(dates.length - 1, daysBetween(d.startDate, t.endDate));
-      for (let i = startOff; i <= endOff; i++) {
-        row[i + 1] = '■';
+    // ── Sheet2: ガントチャート ──
+    if (d.startDate && d.endDate) {
+      const totalDays = Math.max(1, daysBetween(d.startDate, d.endDate) + 1);
+      const dates = [];
+      for (let i = 0; i < totalDays; i++) {
+        const dd = parseDate(d.startDate);
+        dd.setDate(dd.getDate() + i);
+        dates.push(toDateStr(dd));
       }
-      ganttData.push(row);
-    });
-  });
 
-  const ws2 = XLSX.utils.aoa_to_sheet(ganttData);
-  ws2['!cols'] = [{wch:24}, ...dates.map(() => ({wch:3}))];
+      const monthRow = [''];
+      const dayRow2  = ['タスク'];
+      const monthGroups2 = [];
+      let curMonth = null;
+      dates.forEach(dt => {
+        const [y, m] = dt.split('-');
+        const key = `${y}-${m}`;
+        if (!curMonth || curMonth.key !== key) {
+          curMonth = { key, label: `${parseInt(y)}年${parseInt(m)}月`, count: 0 };
+          monthGroups2.push(curMonth);
+        }
+        curMonth.count++;
+        dayRow2.push(parseInt(dt.split('-')[2]));
+      });
+      monthGroups2.forEach(mg => {
+        monthRow.push(mg.label);
+        for (let i = 1; i < mg.count; i++) monthRow.push('');
+      });
 
-  XLSX.utils.book_append_sheet(wb, ws2, 'ガントチャート');
+      const ganttData = [monthRow, dayRow2];
+      (d.members || []).forEach(m => {
+        const memberRow = new Array(dates.length + 1).fill('');
+        memberRow[0] = `▶ ${m.name}（${m.role}）`;
+        ganttData.push(memberRow);
+        (m.tasks || []).forEach(t => {
+          const row = new Array(dates.length + 1).fill('');
+          row[0] = t.name;
+          const startOff = Math.max(0, daysBetween(d.startDate, t.startDate || d.startDate));
+          const endOff = Math.min(dates.length - 1, daysBetween(d.startDate, t.endDate || d.endDate));
+          for (let i = startOff; i <= endOff; i++) row[i + 1] = '■';
+          ganttData.push(row);
+        });
+      });
 
-  // ダウンロード
-  const projName = (d.projectName || 'project').replace(/[/\\?%*:|"<>]/g, '_');
-  XLSX.writeFile(wb, `${projName}_スケジュール.xlsx`);
+      const ws2 = XLSX.utils.aoa_to_sheet(ganttData);
+      ws2['!cols'] = [{wch:24}, ...dates.map(() => ({wch:3}))];
+      XLSX.utils.book_append_sheet(wb, ws2, 'ガントチャート');
+    }
+
+    // Blob方式でダウンロード（ブラウザ互換性が高い）
+    const projName = (d.projectName || 'project').replace(/[/\\?%*:|"<>]/g, '_');
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${projName}_スケジュール.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (e) {
+    console.error('Excel出力エラー:', e);
+    alert('Excel出力に失敗しました: ' + e.message);
+  }
 }
 
 // ─── PROJECT TITLE EDIT ───
