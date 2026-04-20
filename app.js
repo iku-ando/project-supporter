@@ -6373,14 +6373,11 @@ function exportExcel() {
   if (!d) return;
   assignTaskDates();
 
-  // sheetjs-style（セルスタイル対応フォーク）を動的ロード
-  if (typeof XLSX === 'undefined') {
-    const s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/sheetjs-style@0.15.8/dist/xlsx.full.min.js';
-    s.onload = () => doExport(d);
-    document.head.appendChild(s);
-  } else {
+  // xlsx-js-style はHTMLで事前ロード済み
+  if (typeof XLSX !== 'undefined') {
     doExport(d);
+  } else {
+    alert('ライブラリのロードに失敗しました。ページをリロードして再試行してください。');
   }
 }
 
