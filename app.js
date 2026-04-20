@@ -155,7 +155,7 @@ function _showApp() {
   if (appReady) return;
   appReady = true;
   renderSnapshotList();
-  renderDashboard();
+  showPanel(0); // panel-0をactiveにしてrenderDashboard()も呼ぶ
   syncFromSupabase();
 }
 
@@ -1415,18 +1415,6 @@ function resetScheduleDates() {
     members = [];
     memberIdx = 0;
     defs.forEach(m => addMember(m.name, m.role, m.rate || 100));
-  };
-
-  // スケジュールはそのまま、タスクを引き直す
-  document.getElementById('srm-tasks-only-btn').onclick = () => {
-    close();
-    const savedSchedule = generatedData.scheduleItems
-      ? generatedData.scheduleItems.map(i => ({ id: i.id, startDate: i.startDate, endDate: i.endDate }))
-      : null;
-    restoreAndGenerate();
-    // generateTasks完了後にスケジュール日付を復元するためフラグを持たせる
-    generatedData._keepScheduleDates = savedSchedule;
-    generateTasks();
   };
 
   // スケジュールもタスクも引き直す
