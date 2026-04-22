@@ -6373,35 +6373,45 @@ function exportExcel() {
   if (!d) return;
   assignTaskDates();
 
-  // xlsx-js-style はHTMLで事前ロード済み
-  if (typeof XLSX !== 'undefined') {
+  // ExcelJS はHTMLで事前ロード済み
+  if (typeof ExcelJS !== 'undefined') {
     doExport(d);
   } else {
     alert('ライブラリのロードに失敗しました。ページをリロードして再試行してください。');
   }
 }
 
-function doExport(d) {
+async function doExport(d) {
   try {
-    const wb = XLSX.utils.book_new();
+    const wb = new ExcelJS.Workbook();
     const priLabel = { high: '高', mid: '中', low: '低' };
 
     // ── Sheet1: タスク一覧 ──
-    const taskRows = [['メンバー','ロール','タスク名','フェーズ','優先度','開始日','終了日','工数(日)','説明']];
+    const ws1 = wb.addWorksheet('タスク一覧');
+    ws1.columns = [
+      { header: 'メンバー',  width: 14 }, { header: 'ロール',   width: 18 },
+      { header: 'タスク名', width: 24 }, { header: 'フェーズ', width: 10 },
+      { header: '優先度',   width: 6  }, { header: '開始日',   width: 12 },
+      { header: '終了日',   width: 12 }, { header: '工数(日)', width: 8  },
+      { header: '説明',     width: 36 }
+    ];
+    // ヘッダー行スタイル
+    ws1.getRow(1).height = 20;
+    ws1.getRow(1).eachCell(cell => {
+      cell.font      = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F1A14' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+
     (d.members || []).forEach(m => {
       (m.tasks || []).forEach(t => {
-        taskRows.push([m.name, m.role, t.name, t.phase,
-          priLabel[t.priority]||t.priority,
-          t.startDate||'', t.endDate||'', t.days||'', t.description||'']);
+        ws1.addRow([
+          m.name, m.role, t.name, t.phase,
+          priLabel[t.priority] || t.priority,
+          t.startDate || '', t.endDate || '', t.days || '', t.description || ''
+        ]);
       });
     });
-    const ws1 = XLSX.utils.aoa_to_sheet(taskRows);
-    ws1['!cols'] = [{wch:14},{wch:18},{wch:24},{wch:10},{wch:6},{wch:12},{wch:12},{wch:8},{wch:36}];
-    ['A1','B1','C1','D1','E1','F1','G1','H1','I1'].forEach(ref => {
-      if (!ws1[ref]) ws1[ref] = {v:''};
-      ws1[ref].s = {font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1F1A14'}},alignment:{horizontal:'center'}};
-    });
-    XLSX.utils.book_append_sheet(wb, ws1, 'タスク一覧');
 
     // ── Sheet2: スケジュール（ビジュアルガント）──
     if (d.startDate && d.endDate) {
@@ -6413,119 +6423,139 @@ function doExport(d) {
         dates.push(toDateStr(dd));
       }
       const DOW = ['日','月','火','水','木','金','土'];
-
-      // 各列の曜日を事前計算
       const colDow = dates.map(dt => {
-        const [y,m,day] = dt.split('-');
-        return new Date(parseInt(y), parseInt(m)-1, parseInt(day)).getDay();
+        const [y, m, day] = dt.split('-');
+        return new Date(+y, +m - 1, +day).getDay();
       });
       const isWeekend = i => colDow[i] === 0 || colDow[i] === 6;
 
-      // ヘッダー3行を構築
-      const monthRow = [''], dayRow = [''], dowRow = ['タスク名'];
-      const merges = [];
-      let mStart = 1, curMKey = null;
+      const ws2 = wb.addWorksheet('スケジュール');
+      ws2.getColumn(1).width = 22;
+      for (let i = 0; i < dates.length; i++) ws2.getColumn(i + 2).width = 2.5;
+
+      // 月ごとの境界を事前計算
+      const months = [];
+      let curKey = null;
       dates.forEach((dt, i) => {
-        const [y,m,day] = dt.split('-');
+        const [y, m] = dt.split('-');
         const key = `${y}-${m}`;
-        dayRow.push(parseInt(day));
-        dowRow.push(DOW[colDow[i]]);
-        if (curMKey !== key) {
-          if (curMKey !== null) merges.push({s:{r:0,c:mStart},e:{r:0,c:i}});
-          monthRow.push(`${parseInt(y)}年${parseInt(m)}月`);
-          curMKey = key; mStart = i + 1;
-        } else { monthRow.push(''); }
-      });
-      merges.push({s:{r:0,c:mStart},e:{r:0,c:dates.length}});
-
-      // データ行を構築しながらメタ情報も記録
-      const rows = [monthRow, dayRow, dowRow];
-      // rowMeta: 各行の種類（'header'|'member'|'task'）とタスク情報
-      const rowMeta = [
-        {type:'header'}, {type:'header'}, {type:'header'}
-      ];
-
-      const phaseRgb = phase => (PHASE_BAR_COLORS[phase] || getBarColor(phase)).replace('#','').toUpperCase();
-
-      (d.members || []).forEach(m => {
-        const ri = rows.length;
-        const mRow = new Array(dates.length + 1).fill('');
-        mRow[0] = `${m.name}（${m.role}）`;
-        rows.push(mRow);
-        merges.push({s:{r:ri,c:0},e:{r:ri,c:dates.length}});
-        rowMeta.push({type:'member'});
-
-        (m.tasks || []).forEach(t => {
-          const ti = rows.length;
-          const row = new Array(dates.length + 1).fill('');
-          row[0] = t.name;
-          rows.push(row);
-          const startOff = Math.max(0, daysBetween(d.startDate, t.startDate || d.startDate));
-          const endOff   = Math.min(dates.length - 1, daysBetween(d.startDate, t.endDate || d.endDate));
-          rowMeta.push({type:'task', startOff, endOff, rgb: phaseRgb(t.phase)});
-        });
-      });
-
-      const ws2 = XLSX.utils.aoa_to_sheet(rows);
-      ws2['!cols']   = [{wch:22}, ...dates.map(() => ({wch:2.5}))];
-      ws2['!merges'] = merges;
-
-      const setS = (r, c, s) => {
-        const ref = XLSX.utils.encode_cell({r, c});
-        if (!ws2[ref]) ws2[ref] = {v:''};
-        ws2[ref].s = s;
-      };
-
-      // スタイルを全セルに適用
-      rows.forEach((row, r) => {
-        const meta = rowMeta[r];
-        for (let ci = 0; ci <= dates.length; ci++) {
-          const di = ci - 1; // date index (ci=0 はタスク名列)
-          const weekend = di >= 0 && isWeekend(di);
-
-          if (meta.type === 'header') {
-            // ヘッダー行
-            if (r === 0) {
-              setS(r, ci, {font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1F1A14'}},alignment:{horizontal:'center',wrapText:false}});
-            } else if (r === 1) {
-              const bg = di >= 0 ? (weekend ? (colDow[di]===0?'D9534F':'5B9BD5') : '3D3280') : '1F1A14';
-              setS(r, ci, {font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:bg}},alignment:{horizontal:'center'}});
-            } else {
-              const bg = di >= 0 ? (colDow[di]===0?'D9534F':colDow[di]===6?'5B9BD5':'4A4080') : '1F1A14';
-              setS(r, ci, {font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:bg}},alignment:{horizontal:'center'}});
-            }
-          } else if (meta.type === 'member') {
-            setS(r, ci, {font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'2D2460'}}});
-          } else {
-            // タスク行
-            if (ci === 0) {
-              // タスク名列
-              setS(r, ci, {font:{color:{rgb:'1F1A14'}},alignment:{horizontal:'left',vertical:'center'}});
-            } else if (di >= meta.startOff && di <= meta.endOff) {
-              // バー部分: フェーズカラー（土日でも優先）
-              setS(r, ci, {fill:{fgColor:{rgb:meta.rgb}}});
-            } else if (weekend) {
-              // 土日列: グレー
-              setS(r, ci, {fill:{fgColor:{rgb:'E8E8E8'}}});
-            } else {
-              setS(r, ci, {fill:{fgColor:{rgb:'FFFFFF'}}});
-            }
-          }
+        if (curKey !== key) {
+          months.push({ label: `${+y}年${+m}月`, startCol: i + 2, endCol: i + 2 });
+          curKey = key;
+        } else {
+          months[months.length - 1].endCol = i + 2;
         }
       });
 
-      XLSX.utils.book_append_sheet(wb, ws2, 'スケジュール');
+      // ── Row 1: 月ヘッダー ──
+      ws2.getRow(1).height = 18;
+      const r1c1 = ws2.getRow(1).getCell(1);
+      r1c1.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F1A14' } };
+      r1c1.font      = { bold: true, color: { argb: 'FFFFFFFF' } };
+      months.forEach(({ label, startCol, endCol }) => {
+        const cell = ws2.getRow(1).getCell(startCol);
+        cell.value     = label;
+        cell.font      = { bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F1A14' } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        if (endCol > startCol) ws2.mergeCells(1, startCol, 1, endCol);
+      });
+
+      // ── Row 2: 日付（数字）──
+      ws2.getRow(2).height = 16;
+      const r2c1 = ws2.getRow(2).getCell(1);
+      r2c1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F1A14' } };
+      r2c1.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      dates.forEach((dt, i) => {
+        const day  = +dt.split('-')[2];
+        const cell = ws2.getRow(2).getCell(i + 2);
+        cell.value     = day;
+        cell.font      = { bold: true, color: { argb: 'FFFFFFFF' } };
+        const bg = isWeekend(i)
+          ? (colDow[i] === 0 ? 'FFD9534F' : 'FF5B9BD5')
+          : 'FF3D3280';
+        cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      });
+
+      // ── Row 3: 曜日 ──
+      ws2.getRow(3).height = 16;
+      const r3c1 = ws2.getRow(3).getCell(1);
+      r3c1.value     = 'タスク名';
+      r3c1.font      = { bold: true, color: { argb: 'FFFFFFFF' } };
+      r3c1.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F1A14' } };
+      r3c1.alignment = { horizontal: 'left', vertical: 'middle' };
+      dates.forEach((dt, i) => {
+        const cell = ws2.getRow(3).getCell(i + 2);
+        cell.value     = DOW[colDow[i]];
+        cell.font      = { bold: true, color: { argb: 'FFFFFFFF' } };
+        const bg = colDow[i] === 0 ? 'FFD9534F' : colDow[i] === 6 ? 'FF5B9BD5' : 'FF4A4080';
+        cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      });
+
+      // フェーズカラー → ARGB
+      const phaseArgb = phase =>
+        'FF' + (PHASE_BAR_COLORS[phase] || getBarColor(phase)).replace('#', '').toUpperCase();
+
+      let nextRowIdx = 4;
+
+      (d.members || []).forEach(m => {
+        // ── メンバー行 ──
+        const mRow = ws2.getRow(nextRowIdx);
+        mRow.height = 18;
+        mRow.getCell(1).value     = `${m.name}（${m.role}）`;
+        mRow.getCell(1).font      = { bold: true, color: { argb: 'FFFFFFFF' } };
+        mRow.getCell(1).fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2D2460' } };
+        mRow.getCell(1).alignment = { vertical: 'middle' };
+        ws2.mergeCells(nextRowIdx, 1, nextRowIdx, dates.length + 1);
+        nextRowIdx++;
+
+        (m.tasks || []).forEach(t => {
+          // ── タスク行 ──
+          const tRow = ws2.getRow(nextRowIdx);
+          tRow.height = 15;
+          const startOff = Math.max(0, daysBetween(d.startDate, t.startDate || d.startDate));
+          const endOff   = Math.min(dates.length - 1, daysBetween(d.startDate, t.endDate || d.endDate));
+          const barArgb  = phaseArgb(t.phase);
+
+          tRow.getCell(1).value     = t.name;
+          tRow.getCell(1).font      = { color: { argb: 'FF1F1A14' } };
+          tRow.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
+          tRow.getCell(1).fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFAF3E6' } };
+
+          for (let i = 0; i < dates.length; i++) {
+            const cell = tRow.getCell(i + 2);
+            let argb;
+            if (i >= startOff && i <= endOff) {
+              argb = barArgb;                  // バー: フェーズカラー
+            } else if (isWeekend(i)) {
+              argb = 'FFE8E8E8';               // 土日: グレー
+            } else {
+              argb = 'FFFFFFFF';               // 平日: 白
+            }
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb } };
+          }
+          nextRowIdx++;
+        });
+      });
     }
 
-    // Blob方式でダウンロード
+    // ── ダウンロード ──
     const projName = (d.projectName || 'project').replace(/[/\\?%*:|"<>]/g, '_');
-    const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
-    const blob = new Blob([wbout], {type:'application/octet-stream'});
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url; a.download = `${projName}_スケジュール.xlsx`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    const buffer   = await wb.xlsx.writeBuffer();
+    const blob     = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+    const url = URL.createObjectURL(blob);
+    const a   = document.createElement('a');
+    a.href = url;
+    a.download = `${projName}_スケジュール.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+
   } catch (e) {
     console.error('Excel出力エラー:', e);
     alert('Excel出力に失敗しました: ' + e.message);
