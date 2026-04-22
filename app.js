@@ -194,18 +194,15 @@ async function inviteMember(email, role) {
       if (error) throw error;
       return { status: 'added' };
     } else {
-      // 未登録 → invitations に追加してマジックリンク送信
-      await sbClient.from('invitations').upsert({
+      // 未登録 → invitations テーブルに記録（メール送信なし）
+      // 招待相手が Project Supporter にサインアップした際に自動承認される
+      const { error } = await sbClient.from('invitations').upsert({
         project_id:  projectId,
         email,
         role,
         invited_by:  currentUser.id,
         status:      'pending'
       }, { onConflict: 'project_id,email' });
-      const { error } = await sbClient.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: location.origin + location.pathname }
-      });
       if (error) throw error;
       return { status: 'invited' };
     }
@@ -363,7 +360,7 @@ async function submitInvite() {
     document.getElementById('invite-email').value = '';
     _renderMemberList(generatedData?.projectId);
   } else {
-    msg.textContent = `招待メールを ${email} に送信しました`;
+    msg.textContent = `${email} を招待リストに登録しました。対象の方が Project Supporter にサインアップ後、自動でプロジェクトに追加されます`;
     msg.style.color = 'var(--green)';
     document.getElementById('invite-email').value = '';
   }
