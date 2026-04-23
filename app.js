@@ -960,7 +960,10 @@ function copyShareUrl() {
 
 // ガントチャートのみを公開共有（保存するたびに自動更新）
 async function saveGanttShare(projectId) {
-  if (!currentUser || !projectId || !generatedData) return false;
+  if (!currentUser || !projectId || !generatedData) {
+    console.warn('[GanttShare] 早期リターン:', { currentUser: !!currentUser, projectId, hasData: !!generatedData });
+    return false;
+  }
   try {
     const snapId  = 'share_gantt_' + projectId;
     console.log('[GanttShare] 1. ヘッダー取得開始');
@@ -1082,10 +1085,12 @@ function applyGanttOnlyUI() {
 
 // ガントスケジュール共有URLを発行するモーダルを開く
 async function issueGanttShareUrl() {
+  console.log('[GanttShare] issueGanttShareUrl 呼び出し', { generatedData: !!generatedData, currentUser: !!currentUser });
   if (!generatedData) return;
   if (!currentUser) { showToast('ログインが必要です'); return; }
 
   const projectId = ensureProjectId();
+  console.log('[GanttShare] projectId:', projectId);
   if (!projectId) return;
 
   const modal   = document.getElementById('gantt-share-modal');
@@ -1119,9 +1124,11 @@ async function issueGanttShareUrl() {
   generatedData.ganttShareActive = true;
 
   // バックグラウンドで保存
+  console.log('[GanttShare] saveGanttShare 呼び出し前', projectId);
   saveGanttShare(projectId).then(ok => {
+    console.log('[GanttShare] then 発火, ok=', ok);
     const statusEl = document.getElementById('gantt-share-status');
-    if (!statusEl) return;
+    if (!statusEl) { console.warn('[GanttShare] statusEl が見つからない'); return; }
     if (ok) {
       statusEl.textContent = 'スケジュールのみが表示されます。保存するたびに自動で最新状態に更新されます。';
     } else {
