@@ -174,40 +174,22 @@ async function loadProjectMembers(projectId) {
   } catch { return []; }
 }
 
-// メンバーを招待（既存ユーザーは即時追加、未登録は招待メール送信）
+// メンバーを招待（invitationsテーブルに記録 → ログイン時に自動承認）
 async function inviteMember(email, role) {
   if (!sbClient || !currentUser || !generatedData?.projectId) return { error: '設定エラー' };
   const projectId = generatedData.projectId;
   try {
-    // 既存ユーザー確認（RLSで自分のレコードしか返らない場合があるため自分自身は除外）
-    const { data: profile } = await sbClient
-      .from('profiles').select('id, email').eq('email', email).single();
-
-    const profileIsOther = profile && profile.id !== currentUser.id;
-
-    if (profileIsOther) {
-      // 登録済み（自分以外）→ project_members に直接追加（既存ロールは上書きしない）
-      const { error } = await sbClient.from('project_members').upsert({
-        project_id: projectId,
-        user_id:    profile.id,
-        email,
-        role
-      }, { onConflict: 'project_id,user_id', ignoreDuplicates: true });
-      if (error) throw error;
-      return { status: 'added' };
-    } else {
-      // 未登録 → invitations テーブルに記録（メール送信なし）
-      // 招待相手が Project Supporter にサインアップした際に自動承認される
-      const { error } = await sbClient.from('invitations').upsert({
-        project_id:  projectId,
-        email,
-        role,
-        invited_by:  currentUser.id,
-        status:      'pending'
-      }, { onConflict: 'project_id,email' });
-      if (error) throw error;
-      return { status: 'invited' };
-    }
+    // invitations テーブルに記録（メール送信なし）
+    // 招待相手が Project Supporter にサインアップ/ログインした際に自動承認される
+    const { error } = await sbClient.from('invitations').upsert({
+      project_id:  projectId,
+      email,
+      role,
+      invited_by:  currentUser.id,
+      status:      'pending'
+    }, { onConflict: 'project_id,email' });
+    if (error) throw error;
+    return { status: 'invited' };
   } catch (e) {
     return { error: e.message || '招待に失敗しました' };
   }
