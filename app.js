@@ -1050,9 +1050,22 @@ function applyGanttOnlyUI() {
   const statsRow = document.getElementById('stats-row');
   if (statsRow) statsRow.style.display = 'none';
 
-  // ガント共有ボタン自体も非表示（閲覧者には不要）
+  // ガント共有ボタン・定例セットボタンを非表示（閲覧者には不要）
   const ganttShareBtn = document.getElementById('gantt-share-btn');
   if (ganttShareBtn) ganttShareBtn.style.display = 'none';
+
+  // 定例をセットボタンを非表示
+  document.querySelectorAll('.gantt-toolbar button').forEach(btn => {
+    if (btn.id !== 'gantt-zoom-in' && btn.id !== 'gantt-zoom-out') {
+      btn.style.display = 'none';
+    }
+  });
+
+  // 日付入力を読み取り専用に
+  ['gantt-start-input', 'gantt-end-input'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.readOnly = true; el.style.pointerEvents = 'none'; }
+  });
 
   // プロジェクトタイトルのクリック編集を無効化
   const titleEl = document.getElementById('result-project-name');
