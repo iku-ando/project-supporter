@@ -4206,57 +4206,65 @@ function renderPhaseLegend() {
     // スウォッチ — data-swatch-phase で特定
     const swatch = document.createElement('span');
     swatch.setAttribute('data-swatch-phase', phase);
-    swatch.style.cssText = 'display:inline-block;width:10px;height:10px;border-radius:2px;background:'+color+';border:1px solid rgba(0,0,0,.2);cursor:pointer;flex-shrink:0;';
-    swatch.onclick = function(e) {
-      e.stopPropagation();
-      openPhasePicker(phase, this);
-    };
+    swatch.style.cssText = 'display:inline-block;width:10px;height:10px;border-radius:2px;background:'+color+';border:1px solid rgba(0,0,0,.2);cursor:'+(isGuestMode?'default':'pointer')+';flex-shrink:0;';
+    if (!isGuestMode) {
+      swatch.onclick = function(e) {
+        e.stopPropagation();
+        openPhasePicker(phase, this);
+      };
+    }
 
     // フェーズ名
     const nameEl = document.createElement('span');
     nameEl.textContent = phase;
-    nameEl.style.cssText = 'font-size:11px;color:var(--text2);cursor:text;font-family:\'DM Sans\',sans-serif;';
-    nameEl.onclick = function(e) {
-      e.stopPropagation();
-      // ピッカーを閉じる
-      document.querySelectorAll('.phase-ghost-picker').forEach(el => el.remove());
-      const input = document.createElement('input');
-      input.value = phase;
-      input.style.cssText = 'font-size:11px;color:var(--text);background:var(--bg2);border:1px solid var(--accent);border-radius:3px;padding:1px 4px;outline:none;width:80px;';
-      item.replaceChild(input, nameEl);
-      input.focus(); input.select();
-      const commit = () => {
-        const newName = input.value.trim() || phase;
-        if (newName !== phase) {
-          const entries = Object.entries(PHASE_BAR_COLORS);
-          PHASE_BAR_COLORS = {};
-          entries.forEach(([p,c]) => { PHASE_BAR_COLORS[p===phase?newName:p]=c; });
-          if (generatedData) {
-            generatedData.phases = (generatedData.phases||[]).map(p=>p===phase?newName:p);
-            generatedData.members.forEach(m=>m.tasks.forEach(t=>{if(t.phase===phase)t.phase=newName;}));
-            if (generatedData.scheduleItems) generatedData.scheduleItems.forEach(s=>{if(s.phase===phase)s.phase=newName;});
-          }
-          renderPhaseLegend(); renderGantt();
-        } else { renderPhaseLegend(); }
+    nameEl.style.cssText = 'font-size:11px;color:var(--text2);cursor:'+(isGuestMode?'default':'text')+';font-family:\'DM Sans\',sans-serif;';
+    if (!isGuestMode) {
+      nameEl.onclick = function(e) {
+        e.stopPropagation();
+        // ピッカーを閉じる
+        document.querySelectorAll('.phase-ghost-picker').forEach(el => el.remove());
+        const input = document.createElement('input');
+        input.value = phase;
+        input.style.cssText = 'font-size:11px;color:var(--text);background:var(--bg2);border:1px solid var(--accent);border-radius:3px;padding:1px 4px;outline:none;width:80px;';
+        item.replaceChild(input, nameEl);
+        input.focus(); input.select();
+        const commit = () => {
+          const newName = input.value.trim() || phase;
+          if (newName !== phase) {
+            const entries = Object.entries(PHASE_BAR_COLORS);
+            PHASE_BAR_COLORS = {};
+            entries.forEach(([p,c]) => { PHASE_BAR_COLORS[p===phase?newName:p]=c; });
+            if (generatedData) {
+              generatedData.phases = (generatedData.phases||[]).map(p=>p===phase?newName:p);
+              generatedData.members.forEach(m=>m.tasks.forEach(t=>{if(t.phase===phase)t.phase=newName;}));
+              if (generatedData.scheduleItems) generatedData.scheduleItems.forEach(s=>{if(s.phase===phase)s.phase=newName;});
+            }
+            renderPhaseLegend(); renderGantt();
+          } else { renderPhaseLegend(); }
+        };
+        input.addEventListener('blur', commit);
+        input.addEventListener('keydown', function(e2){
+          if(e2.key==='Enter'){e2.preventDefault();input.blur();}
+          if(e2.key==='Escape'){input.value=phase;input.blur();}
+        });
       };
-      input.addEventListener('blur', commit);
-      input.addEventListener('keydown', function(e2){
-        if(e2.key==='Enter'){e2.preventDefault();input.blur();}
-        if(e2.key==='Escape'){input.value=phase;input.blur();}
-      });
-    };
+    }
 
-    // 削除ボタン
+    // 削除ボタン（ゲストモードでは非表示）
     const delBtn = document.createElement('button');
     delBtn.type = 'button';
     delBtn.textContent = '×';
-    delBtn.style.cssText = 'background:none;border:none;font-size:11px;color:#bbb;cursor:pointer;padding:0 2px;line-height:1;';
-    delBtn.onmouseenter = function(){ this.style.color='#dc2626'; };
-    delBtn.onmouseleave = function(){ this.style.color='#bbb'; };
-    delBtn.onclick = function(e) {
-      e.stopPropagation();
-      deletePhase(phase);
-    };
+    if (isGuestMode) {
+      delBtn.style.cssText = 'display:none;';
+    } else {
+      delBtn.style.cssText = 'background:none;border:none;font-size:11px;color:#bbb;cursor:pointer;padding:0 2px;line-height:1;';
+      delBtn.onmouseenter = function(){ this.style.color='#dc2626'; };
+      delBtn.onmouseleave = function(){ this.style.color='#bbb'; };
+      delBtn.onclick = function(e) {
+        e.stopPropagation();
+        deletePhase(phase);
+      };
+    }
 
     item.appendChild(swatch);
     item.appendChild(nameEl);
@@ -4264,7 +4272,8 @@ function renderPhaseLegend() {
     wrap.appendChild(item);
   });
 
-  // ＋追加
+  // ＋追加（ゲストモードでは非表示）
+  if (isGuestMode) return;
   const addBtn = document.createElement('button');
   addBtn.type = 'button';
   addBtn.textContent = '＋';
