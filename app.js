@@ -959,6 +959,193 @@ function copyShareUrl() {
   });
 }
 
+// ─── ガントスケジュール共有URL機能 ───
+
+// ガントチャートのみを公開共有（保存するたびに自動更新）
+async function saveGanttShare(projectId) {
+  if (!currentUser || !projectId || !generatedData) return false;
+  try {
+    const snapId  = 'share_gantt_' + projectId;
+    const headers = await _getAuthHeaders({ 'Content-Type': 'application/json' });
+    const snap    = {
+      id:         snapId,
+      savedAt:    new Date().toISOString(),
+      data:       generatedData,
+      recurring:  recurringList,
+      categories: selectedCategories
+    };
+    await fetch(`${SUPABASE_URL}/rest/v1/projects?snap_id=eq.${snapId}&user_key=eq.${encodeURIComponent(getUserKey())}`, {
+      method: 'DELETE', headers
+    });
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/projects`, {
+      method: 'POST',
+      headers: { ...headers, 'Prefer': 'return=minimal' },
+      body: JSON.stringify({
+        user_key:     getUserKey(),
+        snap_id:      snapId,
+        project_id:   projectId,
+        project_name: generatedData?.projectName || '無題',
+        data:         snap,
+        saved_at:     new Date().toISOString()
+      })
+    });
+    return res.ok;
+  } catch (e) {
+    console.warn('ガント共有保存失敗:', e);
+    return false;
+  }
+}
+
+async function loadGanttShare(projectId) {
+  try {
+    const headers = await _getAuthHeaders();
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/projects?snap_id=eq.share_gantt_${projectId}&limit=1`,
+      { headers }
+    );
+    if (!res.ok) return null;
+    const rows = await res.json();
+    return rows.length ? rows[0].data : null;
+  } catch (e) {
+    console.warn('ガント共有読み込み失敗:', e);
+    return null;
+  }
+}
+
+async function handleGanttShareLoad(projectId) {
+  const snap = await loadGanttShare(projectId);
+  if (snap && snap.data) {
+    generatedData      = snap.data;
+    recurringList      = snap.recurring  || [];
+    selectedCategories = snap.categories || [];
+    renderResult(true);
+    showPanel(2);
+    applyGanttOnlyUI();
+    history.replaceState({}, '', location.pathname);
+  } else {
+    const el = document.createElement('div');
+    el.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:32px 36px;max-width:340px;width:90%;box-shadow:0 24px 64px rgba(0,0,0,.18);z-index:9999;text-align:center;';
+    el.innerHTML = `
+      <div style="font-size:36px;margin-bottom:14px;">📅</div>
+      <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:15px;color:var(--text);margin-bottom:8px;">スケジュールが見つかりません</div>
+      <div style="font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text2);margin-bottom:22px;line-height:1.6;">このリンクは無効か、まだ公開されていない可能性があります。</div>
+      <button onclick="this.parentElement.remove()" style="padding:9px 28px;background:var(--accent);border:none;border-radius:7px;color:#fff;font-family:'Syne',sans-serif;font-size:13px;font-weight:600;cursor:pointer;">閉じる</button>`;
+    document.body.appendChild(el);
+    history.replaceState({}, '', location.pathname);
+  }
+}
+
+// ガントチャートのみ表示するUI（閲覧者向け）
+function applyGanttOnlyUI() {
+  // アイコンレールを非表示・メインのパディングを縮小
+  const iconRail = document.getElementById('icon-rail');
+  if (iconRail) iconRail.style.display = 'none';
+  const mainEl = document.querySelector('.main');
+  if (mainEl) mainEl.style.paddingLeft = '24px';
+
+  // ガント以外のタブを非表示
+  ['tab-wiki', 'tab-member', 'tab-mtg', 'tab-issues'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  document.querySelectorAll('.tab-notch').forEach(el => el.style.display = 'none');
+  const dynTabs = document.getElementById('dynamic-tabs');
+  if (dynTabs) dynTabs.style.display = 'none';
+
+  // 設定ボタン・統計行を非表示
+  const settingsBtn = document.getElementById('proj-settings-btn');
+  if (settingsBtn) settingsBtn.style.display = 'none';
+  const statsRow = document.getElementById('stats-row');
+  if (statsRow) statsRow.style.display = 'none';
+
+  // ガント共有ボタン自体も非表示（閲覧者には不要）
+  const ganttShareBtn = document.getElementById('gantt-share-btn');
+  if (ganttShareBtn) ganttShareBtn.style.display = 'none';
+
+  // プロジェクトタイトルのクリック編集を無効化
+  const titleEl = document.getElementById('result-project-name');
+  if (titleEl) { titleEl.style.cursor = 'default'; titleEl.onclick = null; }
+
+  // 読み取り専用バッジを追加
+  const titleWrap = document.querySelector('#panel-2 > div:first-child');
+  if (titleWrap) {
+    const badge = document.createElement('div');
+    badge.style.cssText = 'margin-top:6px;';
+    badge.innerHTML = `<span style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);background:var(--border);padding:3px 8px;border-radius:4px;">スケジュール / 読み取り専用</span>`;
+    titleWrap.appendChild(badge);
+  }
+
+  // ガントタブに切り替え
+  switchTab('gantt');
+}
+
+// ガントスケジュール共有URLを発行するモーダルを開く
+async function issueGanttShareUrl() {
+  if (!generatedData) return;
+  if (!currentUser) { showToast('ログインが必要です'); return; }
+
+  const projectId = ensureProjectId();
+  if (!projectId) return;
+
+  const modal   = document.getElementById('gantt-share-modal');
+  const content = document.getElementById('gantt-share-content');
+  if (!modal || !content) return;
+  modal.style.display = 'flex';
+
+  const shareUrl = `${location.origin}${location.pathname}?gantt=${projectId}`;
+
+  // URLを即座に表示
+  content.innerHTML = `
+    <div style="margin-bottom:14px;">
+      <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:7px;">スケジュール共有URL</div>
+      <div style="display:flex;gap:6px;">
+        <input id="gantt-share-url-input" value="${shareUrl}" readonly
+          style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:8px 10px;font-family:'DM Mono',monospace;font-size:11px;color:var(--text2);outline:none;cursor:text;"
+          onclick="this.select()">
+        <button id="gantt-share-copy-btn" onclick="copyGanttShareUrl()"
+          style="flex-shrink:0;background:var(--accent);color:#fff;border:none;border-radius:7px;padding:8px 16px;font-family:'Syne',sans-serif;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .15s;"
+          onmouseover="this.style.background='var(--accent2)'" onmouseout="this.style.background='var(--accent)'">コピー</button>
+      </div>
+    </div>
+    <div id="gantt-share-status" style="font-family:'DM Sans',sans-serif;font-size:12px;color:var(--text3);line-height:1.7;display:flex;align-items:center;gap:6px;">
+      <svg style="animation:spin .8s linear infinite;flex-shrink:0;" width="12" height="12" viewBox="0 0 16 16" fill="none">
+        <path d="M8 2a6 6 0 0 1 6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      データを準備中...
+    </div>`;
+
+  // 「常に最新」フラグをセット
+  generatedData.ganttShareActive = true;
+
+  // バックグラウンドで保存
+  saveGanttShare(projectId).then(ok => {
+    const statusEl = document.getElementById('gantt-share-status');
+    if (!statusEl) return;
+    if (ok) {
+      statusEl.textContent = 'スケジュールのみが表示されます。保存するたびに自動で最新状態に更新されます。';
+    } else {
+      statusEl.innerHTML = '<span style="color:#dc2626;">保存に失敗しました。再試行してください。</span>';
+      generatedData.ganttShareActive = false;
+    }
+  });
+}
+
+function copyGanttShareUrl() {
+  const input = document.getElementById('gantt-share-url-input');
+  const btn   = document.getElementById('gantt-share-copy-btn');
+  if (!input || !btn) return;
+  navigator.clipboard.writeText(input.value).then(() => {
+    btn.textContent = 'コピー済み ✓';
+    btn.style.background = '#10b981';
+    setTimeout(() => { btn.textContent = 'コピー'; btn.style.background = 'var(--accent)'; }, 2000);
+  }).catch(() => {
+    input.select(); document.execCommand('copy');
+    btn.textContent = 'コピー済み ✓';
+    btn.style.background = '#10b981';
+    setTimeout(() => { btn.textContent = 'コピー'; btn.style.background = 'var(--accent)'; }, 2000);
+  });
+}
+
 // ゲストモード時のUI調整（左メニューを共有プロジェクトのみに制限）
 function applyGuestModeUI(projectName) {
   // 新規プロジェクト / ホームボタンを非表示
@@ -1064,6 +1251,11 @@ async function saveSnapshot() {
   const ok = await saveToSupabase(snap);
   _registerAsMaster(generatedData.projectId);
   showSyncStatus(ok ? 'cloud' : 'local');
+
+  // ガント共有が有効ならバックグラウンドで最新データを更新
+  if (ok && generatedData?.ganttShareActive && generatedData?.projectId) {
+    saveGanttShare(generatedData.projectId);
+  }
 
   renderSnapshotList();
   renderDashboard();
@@ -1241,6 +1433,14 @@ function init() {
 
   addMember('', 'PM', 100);
   initCategoryChips();
+
+  // ガントスケジュール共有URL（?gantt=projectId）
+  const ganttId = new URLSearchParams(location.search).get('gantt');
+  if (ganttId) {
+    isGuestMode = true;
+    handleGanttShareLoad(ganttId);
+    return;
+  }
 
   // 共有URLは認証不要でそのまま開く
   const shareToken = new URLSearchParams(location.search).get('share');
