@@ -735,11 +735,12 @@ async function saveToSupabase(snap) {
       method: 'POST',
       headers,
       body: JSON.stringify({
-        user_key: getUserKey(),
-        snap_id: String(snap.id),
+        user_key:     getUserKey(),
+        snap_id:      String(snap.id),
+        project_id:   snap.data?.projectId || null,  // メンバーアクセス用
         project_name: snap.data?.projectName || '無題',
-        data: snap,
-        saved_at: new Date().toISOString()
+        data:         snap,
+        saved_at:     new Date().toISOString()
       })
     });
     return res.ok;
@@ -749,18 +750,49 @@ async function saveToSupabase(snap) {
   }
 }
 
-// Supabaseからプロジェクト一覧を取得
+// Supabaseからプロジェクト一覧を取得（自分のプロジェクト＋招待参加プロジェクト）
 async function loadFromSupabase() {
   if (!currentUser) return null;
   try {
     const headers = await _getAuthHeaders();
-    const res = await fetch(
+
+    // 1. 自分のプロジェクト
+    const res1 = await fetch(
       `${SUPABASE_URL}/rest/v1/projects?user_key=eq.${encodeURIComponent(getUserKey())}&order=saved_at.desc&limit=50`,
       { headers }
     );
-    if (!res.ok) return null;
-    const rows = await res.json();
-    return rows.map(r => r.data);
+    const ownRows = res1.ok ? await res1.json() : [];
+
+    // 2. メンバーとして参加しているプロジェクト
+    let memberRows = [];
+    if (sbClient) {
+      const { data: memberships } = await sbClient
+        .from('project_members')
+        .select('project_id')
+        .eq('user_id', currentUser.id);
+
+      if (memberships?.length) {
+        const ownIds = new Set(ownRows.map(r => r.project_id).filter(Boolean));
+        const memberIds = memberships
+          .map(m => m.project_id)
+          .filter(id => id && !ownIds.has(id));
+
+        if (memberIds.length) {
+          const res2 = await fetch(
+            `${SUPABASE_URL}/rest/v1/projects?project_id=in.(${memberIds.join(',')})&order=saved_at.desc`,
+            { headers }
+          );
+          memberRows = res2.ok ? await res2.json() : [];
+        }
+      }
+    }
+
+    // snap_idで重複排除して返す
+    const seen = new Set();
+    return [...ownRows, ...memberRows]
+      .filter(r => { if (seen.has(r.snap_id)) return false; seen.add(r.snap_id); return true; })
+      .map(r => r.data);
+
   } catch (e) {
     console.warn('Supabase読み込み失敗:', e);
     return null;
