@@ -4660,13 +4660,17 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
     lcRow.style.cssText = `display:flex;align-items:center;gap:4px;padding:0 6px 0 ${6+indent}px;height:${rowH}px;border-bottom:1px solid var(--border);border-left:${depth+1}px solid ${phaseColor}${depth===1?'66':'44'};background:${bgAlpha};box-sizing:border-box;`;
 
     const cHandle = document.createElement('div');
-    cHandle.style.cssText=`width:10px;flex-shrink:0;cursor:grab;display:flex;flex-direction:column;gap:2px;align-items:center;opacity:0.2;`;
-    cHandle.innerHTML='<span style="display:block;width:7px;height:1px;background:var(--text3);border-radius:1px;"></span><span style="display:block;width:7px;height:1px;background:var(--text3);border-radius:1px;"></span>';
-    lcRow.addEventListener('mouseenter',()=>cHandle.style.opacity='0.6');
-    lcRow.addEventListener('mouseleave',()=>cHandle.style.opacity='0.2');
+    if (isGuestMode) {
+      cHandle.style.cssText=`width:10px;flex-shrink:0;`;
+    } else {
+      cHandle.style.cssText=`width:10px;flex-shrink:0;cursor:grab;display:flex;flex-direction:column;gap:2px;align-items:center;opacity:0.2;`;
+      cHandle.innerHTML='<span style="display:block;width:7px;height:1px;background:var(--text3);border-radius:1px;"></span><span style="display:block;width:7px;height:1px;background:var(--text3);border-radius:1px;"></span>';
+      lcRow.addEventListener('mouseenter',()=>cHandle.style.opacity='0.6');
+      lcRow.addEventListener('mouseleave',()=>cHandle.style.opacity='0.2');
+    }
 
     // 孫タスク（depth=2）は別タスクへの移動ドラッグ対応
-    if (depth === 2) {
+    if (depth === 2 && !isGuestMode) {
       cHandle.addEventListener('mousedown', e => {
         e.preventDefault(); e.stopPropagation();
         lcRow.style.opacity = '0.4';
@@ -4734,24 +4738,33 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
     }
 
     const cName = document.createElement('span');
-    cName.contentEditable='true'; cName.textContent=child.name;
-    cName.style.cssText=`font-size:12px;color:var(--text2);flex:1;outline:none;white-space:nowrap;overflow:hidden;cursor:text;`;
-    cName.addEventListener('input',()=>{
-      const v=cName.textContent.trim()||child.name; child.name=v;
-      const bl=document.getElementById(cBarLabelId); if(bl) bl.textContent=v;
-    });
-    cName.addEventListener('blur',()=>renderGantt());
-    cName.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();cName.blur();}});
+    cName.textContent=child.name;
+    if (isGuestMode) {
+      cName.style.cssText=`font-size:12px;color:var(--text2);flex:1;outline:none;white-space:nowrap;overflow:hidden;cursor:default;`;
+    } else {
+      cName.contentEditable='true';
+      cName.style.cssText=`font-size:12px;color:var(--text2);flex:1;outline:none;white-space:nowrap;overflow:hidden;cursor:text;`;
+      cName.addEventListener('input',()=>{
+        const v=cName.textContent.trim()||child.name; child.name=v;
+        const bl=document.getElementById(cBarLabelId); if(bl) bl.textContent=v;
+      });
+      cName.addEventListener('blur',()=>renderGantt());
+      cName.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();cName.blur();}});
+    }
 
 
     const cDel = document.createElement('button');
     cDel.type='button'; cDel.textContent='×';
-    cDel.style.cssText=`background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px;padding:0 2px;opacity:0;flex-shrink:0;`;
-    lcRow.addEventListener('mouseenter',()=>cDel.style.opacity='1');
-    lcRow.addEventListener('mouseleave',()=>cDel.style.opacity='0');
-    cDel.onmouseenter=()=>cDel.style.color='#dc2626';
-    cDel.onmouseleave=()=>cDel.style.color='var(--text3)';
-    cDel.onclick=e=>{ e.stopPropagation(); parentItem.children.splice(ci,1); renderGantt(); };
+    if (isGuestMode) {
+      cDel.style.cssText=`display:none;`;
+    } else {
+      cDel.style.cssText=`background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px;padding:0 2px;opacity:0;flex-shrink:0;`;
+      lcRow.addEventListener('mouseenter',()=>cDel.style.opacity='1');
+      lcRow.addEventListener('mouseleave',()=>cDel.style.opacity='0');
+      cDel.onmouseenter=()=>cDel.style.color='#dc2626';
+      cDel.onmouseleave=()=>cDel.style.color='var(--text3)';
+      cDel.onclick=e=>{ e.stopPropagation(); parentItem.children.splice(ci,1); renderGantt(); };
+    }
 
     // ── 担当者（任意・自由入力） ──
     const cAssigneeWrap = document.createElement('div');
@@ -4930,102 +4943,104 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
       }
     } else {
       // ── フルバー（リーフ = 直接編集可能）──
-      cBar.style.cssText=`position:absolute;left:${cBarLeft}px;top:3px;width:${Math.max(4,cW)}px;height:${rowH-8}px;background:${phaseColor}${barAlpha};border-radius:99px;overflow:visible;cursor:grab;user-select:none;z-index:2;`;
+      cBar.style.cssText=`position:absolute;left:${cBarLeft}px;top:3px;width:${Math.max(4,cW)}px;height:${rowH-8}px;background:${phaseColor}${barAlpha};border-radius:99px;overflow:visible;cursor:${isGuestMode?'default':'grab'};user-select:none;z-index:2;`;
       cBarLabel.style.cssText=`position:absolute;left:${cBarLeft+Math.max(4,cW)+4}px;top:50%;transform:translateY(-50%);font-size:${depth===1?'10':'9'}px;color:var(--text2);white-space:nowrap;pointer-events:none;font-family:'DM Sans',sans-serif;z-index:1;`;
 
-      // リサイズハンドル（左）
-      const cResizeLeft = document.createElement('div');
-      cResizeLeft.style.cssText=`position:absolute;left:-4px;top:50%;transform:translateY(-50%);width:8px;height:8px;border-radius:50%;background:#fff;opacity:0.85;cursor:ew-resize;z-index:3;box-shadow:0 0 0 1.5px rgba(0,0,0,0.12);`;
-      cBar.appendChild(cResizeLeft);
-      // リサイズハンドル（右）
-      const cResize = document.createElement('div');
-      cResize.style.cssText=`position:absolute;right:-4px;top:50%;transform:translateY(-50%);width:8px;height:8px;border-radius:50%;background:#fff;opacity:0.85;cursor:ew-resize;z-index:3;box-shadow:0 0 0 1.5px rgba(0,0,0,0.12);`;
-      cBar.appendChild(cResize);
+      if (!isGuestMode) {
+        // リサイズハンドル（左）
+        const cResizeLeft = document.createElement('div');
+        cResizeLeft.style.cssText=`position:absolute;left:-4px;top:50%;transform:translateY(-50%);width:8px;height:8px;border-radius:50%;background:#fff;opacity:0.85;cursor:ew-resize;z-index:3;box-shadow:0 0 0 1.5px rgba(0,0,0,0.12);`;
+        cBar.appendChild(cResizeLeft);
+        // リサイズハンドル（右）
+        const cResize = document.createElement('div');
+        cResize.style.cssText=`position:absolute;right:-4px;top:50%;transform:translateY(-50%);width:8px;height:8px;border-radius:50%;background:#fff;opacity:0.85;cursor:ew-resize;z-index:3;box-shadow:0 0 0 1.5px rgba(0,0,0,0.12);`;
+        cBar.appendChild(cResize);
 
-      // ドラッグ（移動量追跡でクリックと区別）
-      let cBarMoved = false;
-      cBar.addEventListener('mousedown', e=>{
-        if(e.target===cResize||e.target===cResizeLeft) return;
-        e.preventDefault(); e.stopPropagation();
-        if(tooltip) tooltip.style.display='none';
-        cBar.style.cursor='grabbing';
-        cBarMoved = false;
-        const origColIdx = cOff;
-        const startX = e.clientX;
-        const origStart = child.startDate || d.startDate;
-        const origEnd   = child.endDate   || addDays(origStart, (child.days||2)-1);
-        const barW = parseInt(cBar.style.width);
-        const onMove=ev=>{
-          if(Math.abs(ev.clientX-startX)>3) cBarMoved=true;
-          const cd=Math.round((ev.clientX-startX)/COL_W);
-          const newColIdx=Math.max(0,origColIdx+cd);
-          cBar.style.left=(newColIdx*COL_W+1)+'px';
-          cBarLabel.style.left=(newColIdx*COL_W+1+barW+4)+'px';
-        };
-        const onUp=ev=>{
-          cBar.style.cursor='grab';
-          document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp);
-          const finalDelta=Math.round((ev.clientX-startX)/COL_W);
-          if(finalDelta===0){cBar.style.left=(origColIdx*COL_W+1)+'px';return;}
-          child.startDate=addDays(origStart,finalDelta);
-          child.endDate=addDays(origEnd,finalDelta);
-          child.days=Math.max(1,daysBetween(child.startDate,child.endDate)+1);
-          child.phase=getPhaseForDate(d,child.startDate);
-          renderGantt();
-        };
-        document.addEventListener('mousemove',onMove); document.addEventListener('mouseup',onUp);
-      });
-      cBar.addEventListener('click', e=>{
-        if(cBarMoved||isGuestMode) return;
-        e.stopPropagation();
-        document.querySelectorAll('.gantt-bar-popup').forEach(p=>p.remove());
-        showBarPopup(e, child);
-      });
+        // ドラッグ（移動量追跡でクリックと区別）
+        let cBarMoved = false;
+        cBar.addEventListener('mousedown', e=>{
+          if(e.target===cResize||e.target===cResizeLeft) return;
+          e.preventDefault(); e.stopPropagation();
+          if(tooltip) tooltip.style.display='none';
+          cBar.style.cursor='grabbing';
+          cBarMoved = false;
+          const origColIdx = cOff;
+          const startX = e.clientX;
+          const origStart = child.startDate || d.startDate;
+          const origEnd   = child.endDate   || addDays(origStart, (child.days||2)-1);
+          const barW = parseInt(cBar.style.width);
+          const onMove=ev=>{
+            if(Math.abs(ev.clientX-startX)>3) cBarMoved=true;
+            const cd=Math.round((ev.clientX-startX)/COL_W);
+            const newColIdx=Math.max(0,origColIdx+cd);
+            cBar.style.left=(newColIdx*COL_W+1)+'px';
+            cBarLabel.style.left=(newColIdx*COL_W+1+barW+4)+'px';
+          };
+          const onUp=ev=>{
+            cBar.style.cursor='grab';
+            document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp);
+            const finalDelta=Math.round((ev.clientX-startX)/COL_W);
+            if(finalDelta===0){cBar.style.left=(origColIdx*COL_W+1)+'px';return;}
+            child.startDate=addDays(origStart,finalDelta);
+            child.endDate=addDays(origEnd,finalDelta);
+            child.days=Math.max(1,daysBetween(child.startDate,child.endDate)+1);
+            child.phase=getPhaseForDate(d,child.startDate);
+            renderGantt();
+          };
+          document.addEventListener('mousemove',onMove); document.addEventListener('mouseup',onUp);
+        });
+        cBar.addEventListener('click', e=>{
+          if(cBarMoved) return;
+          e.stopPropagation();
+          document.querySelectorAll('.gantt-bar-popup').forEach(p=>p.remove());
+          showBarPopup(e, child);
+        });
 
-      // 右リサイズ
-      cResize.addEventListener('mousedown',e=>{
-        e.preventDefault(); e.stopPropagation();
-        const sx=e.clientX, ow=parseInt(cBar.style.width), ol=parseInt(cBar.style.left);
-        const onMove=ev=>{
-          const newW=Math.max(COL_W,ow+Math.round((ev.clientX-sx)/COL_W)*COL_W);
-          cBar.style.width=newW+'px';
-          cBarLabel.style.left=(ol+newW+4)+'px';
-        };
-        const onUp=ev=>{
-          document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp);
-          const cd=Math.round((ev.clientX-sx)/COL_W); if(cd===0) return;
-          child.days=Math.max(1,(child.days||2)+cd);
-          child.endDate=addDays(child.startDate||d.startDate,child.days-1);
-          renderGantt();
-        };
-        document.addEventListener('mousemove',onMove); document.addEventListener('mouseup',onUp);
-      });
+        // 右リサイズ
+        cResize.addEventListener('mousedown',e=>{
+          e.preventDefault(); e.stopPropagation();
+          const sx=e.clientX, ow=parseInt(cBar.style.width), ol=parseInt(cBar.style.left);
+          const onMove=ev=>{
+            const newW=Math.max(COL_W,ow+Math.round((ev.clientX-sx)/COL_W)*COL_W);
+            cBar.style.width=newW+'px';
+            cBarLabel.style.left=(ol+newW+4)+'px';
+          };
+          const onUp=ev=>{
+            document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp);
+            const cd=Math.round((ev.clientX-sx)/COL_W); if(cd===0) return;
+            child.days=Math.max(1,(child.days||2)+cd);
+            child.endDate=addDays(child.startDate||d.startDate,child.days-1);
+            renderGantt();
+          };
+          document.addEventListener('mousemove',onMove); document.addEventListener('mouseup',onUp);
+        });
 
-      // 左リサイズ
-      cResizeLeft.addEventListener('mousedown', e=>{
-        e.preventDefault(); e.stopPropagation();
-        const startX=e.clientX;
-        const origColIdx=cOff;
-        const origWidth=parseInt(cBar.style.width);
-        const onMove=ev=>{
-          const colDelta=Math.round((ev.clientX-startX)/COL_W);
-          const newLeft=Math.max(0,origColIdx+colDelta)*COL_W+1;
-          const newW=Math.max(COL_W,origWidth-colDelta*COL_W);
-          cBar.style.left=newLeft+'px';
-          cBar.style.width=newW+'px';
-          cBarLabel.style.left=(newLeft+newW+4)+'px';
-        };
-        const onUp=ev=>{
-          document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp);
-          const colDelta=Math.round((ev.clientX-startX)/COL_W); if(colDelta===0) return;
-          child.startDate=addDays(d.startDate,origColIdx+colDelta);
-          child.days=Math.max(1,Math.round((parseInt(cBar.style.width))/COL_W));
-          child.endDate=addDays(child.startDate,child.days-1);
-          child.phase=getPhaseForDate(d,child.startDate);
-          renderGantt();
-        };
-        document.addEventListener('mousemove',onMove); document.addEventListener('mouseup',onUp);
-      });
+        // 左リサイズ
+        cResizeLeft.addEventListener('mousedown', e=>{
+          e.preventDefault(); e.stopPropagation();
+          const startX=e.clientX;
+          const origColIdx=cOff;
+          const origWidth=parseInt(cBar.style.width);
+          const onMove=ev=>{
+            const colDelta=Math.round((ev.clientX-startX)/COL_W);
+            const newLeft=Math.max(0,origColIdx+colDelta)*COL_W+1;
+            const newW=Math.max(COL_W,origWidth-colDelta*COL_W);
+            cBar.style.left=newLeft+'px';
+            cBar.style.width=newW+'px';
+            cBarLabel.style.left=(newLeft+newW+4)+'px';
+          };
+          const onUp=ev=>{
+            document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp);
+            const colDelta=Math.round((ev.clientX-startX)/COL_W); if(colDelta===0) return;
+            child.startDate=addDays(d.startDate,origColIdx+colDelta);
+            child.days=Math.max(1,Math.round((parseInt(cBar.style.width))/COL_W));
+            child.endDate=addDays(child.startDate,child.days-1);
+            child.phase=getPhaseForDate(d,child.startDate);
+            renderGantt();
+          };
+          document.addEventListener('mousemove',onMove); document.addEventListener('mouseup',onUp);
+        });
+      } // end !isGuestMode
     }
 
     // ツールチップ
@@ -5682,9 +5697,9 @@ function renderGantt() {
     lPhaseRow.style.cssText = `display:flex;align-items:center;background:var(--bg2);border-bottom:1px solid var(--border);height:34px;overflow:hidden;padding:0 10px 0 6px;gap:6px;`;
     lPhaseRow.setAttribute('data-phase-row', phase);
 
-    // ドラッグハンドル（masterのみ表示）
+    // ドラッグハンドル（masterのみ・ゲストモード除く）
     const phaseHandle = document.createElement('div');
-    if (!isMasterRole) {
+    if (!isMasterRole || isGuestMode) {
       phaseHandle.style.cssText = `width:14px;flex-shrink:0;`;
     } else {
       phaseHandle.style.cssText = `width:14px;flex-shrink:0;cursor:grab;display:flex;flex-direction:column;gap:2px;align-items:center;justify-content:center;opacity:0.2;`;
@@ -5703,7 +5718,7 @@ function renderGantt() {
     lPhaseRow.appendChild(phaseHandle);
     lPhaseRow.appendChild(phaseDot);
     lPhaseRow.appendChild(phaseNameEl);
-    if (isMasterRole) {
+    if (!isGuestMode) {
       const phaseAddBtn = document.createElement('button');
       phaseAddBtn.textContent = '＋';
       phaseAddBtn.title = 'スケジュールにタスクを追加';
@@ -5716,7 +5731,7 @@ function renderGantt() {
     gtLeftBody.appendChild(lPhaseRow);
 
     // ── フェーズ行ドラッグ並び替え ──
-    phaseHandle.addEventListener('mousedown', e => {
+    if (!isGuestMode) phaseHandle.addEventListener('mousedown', e => {
       e.preventDefault();
       lPhaseRow.style.opacity = '0.4';
       const indicator = document.createElement('div');
