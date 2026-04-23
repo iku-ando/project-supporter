@@ -960,51 +960,39 @@ function copyShareUrl() {
 
 // ガントチャートのみを公開共有（保存するたびに自動更新）
 async function saveGanttShare(projectId) {
-  if (!currentUser || !projectId || !generatedData) {
-    console.warn('[GanttShare] 早期リターン:', { currentUser: !!currentUser, projectId, hasData: !!generatedData });
-    return false;
-  }
+  if (!sbClient || !currentUser || !projectId || !generatedData) return false;
   try {
-    const snapId  = 'share_gantt_' + projectId;
-    console.log('[GanttShare] 1. ヘッダー取得開始');
-    const headers = await _getAuthHeaders({
-      'Content-Type': 'application/json',
-      'Prefer': 'resolution=merge-duplicates'
-    });
-    console.log('[GanttShare] 2. リクエスト送信開始', snapId);
-    const snap = {
+    const snapId = 'share_gantt_' + projectId;
+    const snap   = {
       id:         snapId,
       savedAt:    new Date().toISOString(),
       data:       generatedData,
       recurring:  recurringList,
       categories: selectedCategories
     };
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/projects`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        user_key:     getUserKey(),
-        snap_id:      snapId,
-        project_id:   projectId,
-        project_name: generatedData?.projectName || '無題',
-        data:         snap,
-        saved_at:     new Date().toISOString()
-      })
-    });
-    console.log('[GanttShare] 3. レスポンス:', res.status, res.ok);
-    if (!res.ok) console.warn('[GanttShare] 失敗詳細:', await res.text());
-    return res.ok;
+    // sbClientを直接使用（_getAuthHeadersのgetSession競合を回避）
+    const { error } = await sbClient.from('projects').upsert({
+      user_key:     getUserKey(),
+      snap_id:      snapId,
+      project_id:   projectId,
+      project_name: generatedData?.projectName || '無題',
+      data:         snap,
+      saved_at:     new Date().toISOString()
+    }, { onConflict: 'snap_id' });
+    if (error) { console.warn('ガント共有保存失敗:', error); return false; }
+    return true;
   } catch (e) {
-    console.warn('[GanttShare] 例外:', e);
+    console.warn('ガント共有保存失敗:', e);
     return false;
   }
 }
 
 async function loadGanttShare(projectId) {
   try {
-    const headers = await _getAuthHeaders();
+    // 認証不要・anonキーのみで取得（share_rows_public_readポリシーが許可）
+    const headers = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` };
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/projects?snap_id=eq.share_gantt_${projectId}&limit=1`,
+      `${SUPABASE_URL}/rest/v1/projects?snap_id=eq.share_gantt_${projectId}&select=data&limit=1`,
       { headers }
     );
     if (!res.ok) return null;
@@ -1085,12 +1073,10 @@ function applyGanttOnlyUI() {
 
 // ガントスケジュール共有URLを発行するモーダルを開く
 async function issueGanttShareUrl() {
-  console.log('[GanttShare] issueGanttShareUrl 呼び出し', { generatedData: !!generatedData, currentUser: !!currentUser });
   if (!generatedData) return;
   if (!currentUser) { showToast('ログインが必要です'); return; }
 
   const projectId = ensureProjectId();
-  console.log('[GanttShare] projectId:', projectId);
   if (!projectId) return;
 
   const modal   = document.getElementById('gantt-share-modal');
@@ -1124,11 +1110,9 @@ async function issueGanttShareUrl() {
   generatedData.ganttShareActive = true;
 
   // バックグラウンドで保存
-  console.log('[GanttShare] saveGanttShare 呼び出し前', projectId);
   saveGanttShare(projectId).then(ok => {
-    console.log('[GanttShare] then 発火, ok=', ok);
     const statusEl = document.getElementById('gantt-share-status');
-    if (!statusEl) { console.warn('[GanttShare] statusEl が見つからない'); return; }
+    if (!statusEl) return;
     if (ok) {
       statusEl.textContent = 'スケジュールのみが表示されます。保存するたびに自動で最新状態に更新されます。';
     } else {
