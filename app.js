@@ -831,15 +831,15 @@ function generateUUID() {
 
 async function saveSharedProject(token, snap) {
   try {
-    const headers = await _getAuthHeaders({ 'Content-Type': 'application/json' });
-    // snap_id = 'share_xxx'、user_key = 自分のキー でRLSを通過させる
-    const snapId = 'share_' + token;
-    await fetch(`${SUPABASE_URL}/rest/v1/projects?snap_id=eq.${snapId}&user_key=eq.${encodeURIComponent(getUserKey())}`, {
-      method: 'DELETE', headers
+    // saveToSupabase と同じ upsert 方式（DELETE不要・RLS問題を回避）
+    const headers = await _getAuthHeaders({
+      'Content-Type': 'application/json',
+      'Prefer': 'resolution=merge-duplicates'
     });
+    const snapId = 'share_' + token;
     const res = await fetch(`${SUPABASE_URL}/rest/v1/projects`, {
       method: 'POST',
-      headers: { ...headers, 'Prefer': 'return=minimal' },
+      headers,
       body: JSON.stringify({
         user_key:     getUserKey(),
         snap_id:      snapId,
@@ -848,10 +848,7 @@ async function saveSharedProject(token, snap) {
         saved_at:     new Date().toISOString()
       })
     });
-    if (!res.ok) {
-      const errText = await res.text();
-      console.warn('共有保存失敗:', res.status, errText);
-    }
+    if (!res.ok) console.warn('共有保存失敗:', res.status, await res.text());
     return res.ok;
   } catch (e) {
     console.warn('共有保存失敗:', e);
@@ -966,20 +963,21 @@ async function saveGanttShare(projectId) {
   if (!currentUser || !projectId || !generatedData) return false;
   try {
     const snapId  = 'share_gantt_' + projectId;
-    const headers = await _getAuthHeaders({ 'Content-Type': 'application/json' });
-    const snap    = {
+    // saveToSupabase と同じ upsert 方式（DELETE不要・RLS問題を回避）
+    const headers = await _getAuthHeaders({
+      'Content-Type': 'application/json',
+      'Prefer': 'resolution=merge-duplicates'
+    });
+    const snap = {
       id:         snapId,
       savedAt:    new Date().toISOString(),
       data:       generatedData,
       recurring:  recurringList,
       categories: selectedCategories
     };
-    await fetch(`${SUPABASE_URL}/rest/v1/projects?snap_id=eq.${snapId}&user_key=eq.${encodeURIComponent(getUserKey())}`, {
-      method: 'DELETE', headers
-    });
     const res = await fetch(`${SUPABASE_URL}/rest/v1/projects`, {
       method: 'POST',
-      headers: { ...headers, 'Prefer': 'return=minimal' },
+      headers,
       body: JSON.stringify({
         user_key:     getUserKey(),
         snap_id:      snapId,
@@ -989,6 +987,7 @@ async function saveGanttShare(projectId) {
         saved_at:     new Date().toISOString()
       })
     });
+    if (!res.ok) console.warn('ガント共有保存失敗:', res.status, await res.text());
     return res.ok;
   } catch (e) {
     console.warn('ガント共有保存失敗:', e);
