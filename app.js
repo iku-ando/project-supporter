@@ -179,18 +179,20 @@ async function inviteMember(email, role) {
   if (!sbClient || !currentUser || !generatedData?.projectId) return { error: '設定エラー' };
   const projectId = generatedData.projectId;
   try {
-    // 既存ユーザー確認
+    // 既存ユーザー確認（RLSで自分のレコードしか返らない場合があるため自分自身は除外）
     const { data: profile } = await sbClient
-      .from('profiles').select('id').eq('email', email).single();
+      .from('profiles').select('id, email').eq('email', email).single();
 
-    if (profile) {
-      // 登録済み → project_members に直接追加
+    const profileIsOther = profile && profile.id !== currentUser.id;
+
+    if (profileIsOther) {
+      // 登録済み（自分以外）→ project_members に直接追加（既存ロールは上書きしない）
       const { error } = await sbClient.from('project_members').upsert({
         project_id: projectId,
         user_id:    profile.id,
         email,
         role
-      }, { onConflict: 'project_id,user_id' });
+      }, { onConflict: 'project_id,user_id', ignoreDuplicates: true });
       if (error) throw error;
       return { status: 'added' };
     } else {
@@ -420,7 +422,7 @@ async function loadProjectRole(projectId) {
   }
 }
 
-// プロジェクトのオーナー（master）として登録（既存レコードがなければ）
+// プロジェクトのオーナー（master）として登録・強制修正
 async function _registerAsMaster(projectId) {
   if (!sbClient || !currentUser || !projectId) return;
   try {
@@ -429,7 +431,7 @@ async function _registerAsMaster(projectId) {
       user_id:    currentUser.id,
       email:      currentUser.email,
       role:       'master'
-    }, { onConflict: 'project_id,user_id', ignoreDuplicates: true });
+    }, { onConflict: 'project_id,user_id' }); // ignoreDuplicates なし → 誤ったロールを上書き修正
   } catch {}
 }
 
@@ -7905,11 +7907,11 @@ function makeMemberTaskItem(mi, ti, depth, parentPath) {
   // スケジュール外タスクはコンパクト表示
   if (excluded) {
     const compactCard = document.createElement('div');
-    compactCard.style.cssText = `display:flex;align-items:center;gap:6px;padding:5px 60px 5px 12px;border:none;border-radius:6px;background:rgba(255,255,255,0.42);position:relative;`;
+    compactCard.style.cssText = `display:flex;align-items:flex-start;gap:6px;padding:5px 60px 5px 12px;border:none;border-radius:6px;background:rgba(255,255,255,0.42);position:relative;`;
 
     const nameText = document.createElement('span');
     nameText.contentEditable = 'true';
-    nameText.style.cssText = `font-size:12px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;outline:none;cursor:text;`;
+    nameText.style.cssText = `font-size:12px;color:var(--text2);flex:1;outline:none;cursor:text;word-break:break-word;line-height:1.5;`;
     nameText.textContent = taskRef.name;
     nameText.addEventListener('input', () => { getTaskByPath(mi,path).name = nameText.textContent.trim() || taskRef.name; });
     nameText.addEventListener('click', e => e.stopPropagation());
@@ -7954,10 +7956,10 @@ function makeMemberTaskItem(mi, ti, depth, parentPath) {
   // 子タスク（depth>0）はコンパクトインデント表示
   if (depth > 0) {
     const compactChild = document.createElement('div');
-    compactChild.style.cssText = `display:flex;align-items:center;gap:6px;padding:4px 24px 4px ${10+indentPx}px;border-left:2px solid ${pc.text}44;background:var(--bg3);position:relative;border-radius:0 4px 4px 0;margin-left:${indentPx}px;`;
+    compactChild.style.cssText = `display:flex;align-items:flex-start;gap:6px;padding:4px 24px 4px ${10+indentPx}px;border-left:2px solid ${pc.text}44;background:var(--bg3);position:relative;border-radius:0 4px 4px 0;margin-left:${indentPx}px;`;
     const childName = document.createElement('span');
     childName.contentEditable = 'true';
-    childName.style.cssText = `font-size:11px;color:var(--text2);flex:1;outline:none;white-space:nowrap;overflow:hidden;cursor:text;`;
+    childName.style.cssText = `font-size:11px;color:var(--text2);flex:1;outline:none;cursor:text;word-break:break-word;line-height:1.5;`;
     childName.textContent = taskRef.name;
     childName.addEventListener('input', () => { getTaskByPath(mi,path).name = childName.textContent.trim() || taskRef.name; });
     const childDel = document.createElement('button');
