@@ -356,6 +356,8 @@ async function submitInvite() {
 function ensureProjectId() {
   if (!generatedData) return null;
   if (!generatedData.projectId) generatedData.projectId = generateUUID();
+  // 所有者キーが未設定なら付与（ロール判定に使用）
+  if (currentUser && !generatedData.ownerKey) generatedData.ownerKey = getUserKey();
   return generatedData.projectId;
 }
 
@@ -385,6 +387,15 @@ async function loadProjectRole(projectId) {
     applyRolePermissions('master'); // 新規プロジェクト → マスター
     return;
   }
+
+  // 自分が保存したプロジェクト（ownerKey が一致）は常にmaster
+  // これによりproject_membersテーブルの状態に依存せず所有者を判定できる
+  if (generatedData?.ownerKey && generatedData.ownerKey === getUserKey()) {
+    applyRolePermissions('master');
+    _registerAsMaster(projectId); // project_membersにも反映
+    return;
+  }
+
   try {
     const { data } = await sbClient
       .from('project_members')
@@ -985,6 +996,8 @@ async function saveSnapshot() {
   if (!generatedData) return;
   // projectIdを確保してからスナップショット作成
   ensureProjectId();
+  // 所有者キーを埋め込み（ロール判定に使用）
+  if (currentUser) generatedData.ownerKey = getUserKey();
   const snaps = getSnapshots();
   const now   = new Date();
   const label = `${generatedData.projectName || '無題'} — ${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
