@@ -963,11 +963,12 @@ async function saveGanttShare(projectId) {
   if (!currentUser || !projectId || !generatedData) return false;
   try {
     const snapId  = 'share_gantt_' + projectId;
-    // saveToSupabase と同じ upsert 方式（DELETE不要・RLS問題を回避）
+    console.log('[GanttShare] 1. ヘッダー取得開始');
     const headers = await _getAuthHeaders({
       'Content-Type': 'application/json',
       'Prefer': 'resolution=merge-duplicates'
     });
+    console.log('[GanttShare] 2. リクエスト送信開始', snapId);
     const snap = {
       id:         snapId,
       savedAt:    new Date().toISOString(),
@@ -987,10 +988,11 @@ async function saveGanttShare(projectId) {
         saved_at:     new Date().toISOString()
       })
     });
-    if (!res.ok) console.warn('ガント共有保存失敗:', res.status, await res.text());
+    console.log('[GanttShare] 3. レスポンス:', res.status, res.ok);
+    if (!res.ok) console.warn('[GanttShare] 失敗詳細:', await res.text());
     return res.ok;
   } catch (e) {
-    console.warn('ガント共有保存失敗:', e);
+    console.warn('[GanttShare] 例外:', e);
     return false;
   }
 }
