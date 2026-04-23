@@ -1097,7 +1097,7 @@ async function issueGanttShareUrl() {
   if (!modal || !content) return;
   modal.style.display = 'flex';
 
-  const shareUrl = `${location.origin}${location.pathname}?gantt=${projectId}`;
+  const shareUrl = `${location.origin}/g/${projectId}/latest`;
 
   // URLを即座に表示
   content.innerHTML = `
@@ -1439,8 +1439,9 @@ function init() {
   addMember('', 'PM', 100);
   initCategoryChips();
 
-  // ガントスケジュール共有URL（?gantt=projectId）
-  const ganttId = new URLSearchParams(location.search).get('gantt');
+  // ガントスケジュール共有URL（/g/:projectId/latest または ?gantt=projectId）
+  const pathMatch = location.pathname.match(/^\/g\/([^\/]+)\/latest\/?$/);
+  const ganttId = pathMatch ? pathMatch[1] : new URLSearchParams(location.search).get('gantt');
   if (ganttId) {
     isGuestMode = true;
     handleGanttShareLoad(ganttId);

@@ -1,6 +1,7 @@
 {
   "rewrites": [
-    { "source": "/", "destination": "/project-dashboard.html" }
+    { "source": "/", "destination": "/project-dashboard.html" },
+    { "source": "/g/:projectId/latest", "destination": "/project-dashboard.html" }
   ],
   "functions": {
     "api/generate.js": {
