@@ -179,16 +179,21 @@ async function inviteMember(email, role) {
   if (!sbClient || !currentUser || !generatedData?.projectId) return { error: '設定エラー' };
   const projectId = generatedData.projectId;
   try {
-    // invitations テーブルに記録（メール送信なし）
+    // INSERTを使用（upsertのUPDATEパスがRLSでブロックされハングする問題を回避）
     // 招待相手が Project Supporter にサインアップ/ログインした際に自動承認される
-    const { error } = await sbClient.from('invitations').upsert({
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('タイムアウト：ネットワークまたは権限の問題が発生しました')), 10000)
+    );
+    const insertPromise = sbClient.from('invitations').insert({
       project_id:  projectId,
       email,
       role,
       invited_by:  currentUser.id,
       status:      'pending'
-    }, { onConflict: 'project_id,email' });
-    if (error) throw error;
+    });
+    const { error } = await Promise.race([insertPromise, timeoutPromise]);
+    // 23505 = unique violation（すでに招待済み）→ 成功として扱う
+    if (error && error.code !== '23505') throw error;
     return { status: 'invited' };
   } catch (e) {
     return { error: e.message || '招待に失敗しました' };
@@ -761,7 +766,9 @@ async function loadFromSupabase() {
       `${SUPABASE_URL}/rest/v1/projects?user_key=eq.${encodeURIComponent(getUserKey())}&order=saved_at.desc&limit=50`,
       { headers }
     );
-    const ownRows = res1.ok ? await res1.json() : [];
+    // snap_id が 'share_' で始まる行は共有用なのでプロジェクト一覧から除外
+    const ownRows = (res1.ok ? await res1.json() : [])
+      .filter(r => !String(r.snap_id || '').startsWith('share_'));
 
     // 2. メンバーとして参加しているプロジェクト
     let memberRows = [];
@@ -823,18 +830,19 @@ function generateUUID() {
 }
 
 async function saveSharedProject(token, snap) {
-  const headers = await _getAuthHeaders({ 'Content-Type': 'application/json' });
   try {
-    // 既存レコードを削除してから新規挿入（upsert競合を回避）
-    await fetch(`${SUPABASE_URL}/rest/v1/projects?user_key=eq.share_${token}`, {
+    const headers = await _getAuthHeaders({ 'Content-Type': 'application/json' });
+    // snap_id = 'share_xxx'、user_key = 自分のキー でRLSを通過させる
+    const snapId = 'share_' + token;
+    await fetch(`${SUPABASE_URL}/rest/v1/projects?snap_id=eq.${snapId}&user_key=eq.${encodeURIComponent(getUserKey())}`, {
       method: 'DELETE', headers
     });
     const res = await fetch(`${SUPABASE_URL}/rest/v1/projects`, {
       method: 'POST',
       headers: { ...headers, 'Prefer': 'return=minimal' },
       body: JSON.stringify({
-        user_key:     'share_' + token,
-        snap_id:      token,
+        user_key:     getUserKey(),
+        snap_id:      snapId,
         project_name: snap.data?.projectName || '無題',
         data:         snap,
         saved_at:     new Date().toISOString()
@@ -854,8 +862,9 @@ async function saveSharedProject(token, snap) {
 async function loadSharedProject(token) {
   try {
     const headers = await _getAuthHeaders();
+    // snap_id = 'share_xxx' で検索（user_keyに依存しない）
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/projects?user_key=eq.share_${token}&limit=1`,
+      `${SUPABASE_URL}/rest/v1/projects?snap_id=eq.share_${token}&limit=1`,
       { headers }
     );
     if (!res.ok) return null;
@@ -884,48 +893,54 @@ async function issueShareUrl() {
       URLを生成中...
     </div>`;
 
-  // 既存トークン再利用 or 新規生成
+  // 既存トークン再利用 or 新規生成（URLは即座に表示）
   if (!generatedData.shareToken) generatedData.shareToken = generateUUID();
-  const token = generatedData.shareToken;
-
-  const snap = {
-    id: token,
-    savedAt: new Date().toISOString(),
-    data: generatedData,
-    recurring: recurringList,
-    categories: selectedCategories
-  };
-  const ok = await saveSharedProject(token, snap);
+  const token    = generatedData.shareToken;
   const shareUrl = `${location.origin}${location.pathname}?share=${token}`;
 
-  if (ok) {
-    content.innerHTML = `
-      <div style="margin-bottom:14px;">
-        <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:7px;">共有URL</div>
-        <div style="display:flex;gap:6px;">
-          <input id="share-url-input" value="${shareUrl}" readonly
-            style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:8px 10px;font-family:'DM Mono',monospace;font-size:11px;color:var(--text2);outline:none;cursor:text;"
-            onclick="this.select()">
-          <button id="share-copy-btn" onclick="copyShareUrl()"
-            style="flex-shrink:0;background:var(--accent);color:#fff;border:none;border-radius:7px;padding:8px 16px;font-family:'Syne',sans-serif;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .15s;"
-            onmouseover="this.style.background='var(--accent2)'" onmouseout="this.style.background='var(--accent)'">コピー</button>
-        </div>
+  // URLを即座に表示し、保存はバックグラウンドで行う
+  content.innerHTML = `
+    <div style="margin-bottom:14px;">
+      <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:7px;">共有URL</div>
+      <div style="display:flex;gap:6px;">
+        <input id="share-url-input" value="${shareUrl}" readonly
+          style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:8px 10px;font-family:'DM Mono',monospace;font-size:11px;color:var(--text2);outline:none;cursor:text;"
+          onclick="this.select()">
+        <button id="share-copy-btn" onclick="copyShareUrl()"
+          style="flex-shrink:0;background:var(--accent);color:#fff;border:none;border-radius:7px;padding:8px 16px;font-family:'Syne',sans-serif;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .15s;"
+          onmouseover="this.style.background='var(--accent2)'" onmouseout="this.style.background='var(--accent)'">コピー</button>
       </div>
-      <div style="font-family:'DM Sans',sans-serif;font-size:12px;color:var(--text3);line-height:1.7;margin-bottom:16px;">
-        このURLを知っているメンバーがアクセスできます。プロジェクトのスナップショットが共有されます。
-      </div>
-      <button onclick="issueShareUrl()"
-        style="display:flex;align-items:center;justify-content:center;gap:7px;width:100%;padding:9px 12px;background:transparent;border:1px solid var(--border2);border-radius:7px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:12px;color:var(--text2);transition:background .15s;box-sizing:border-box;"
-        onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='transparent'">
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M2 8a6 6 0 1 0 1.5-3.9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M2 4v4h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        現在の状態でURLを更新する
-      </button>`;
-  } else {
-    content.innerHTML = `
-      <div style="color:#dc2626;font-family:'DM Sans',sans-serif;font-size:13px;padding:4px 0;">
-        URLの生成に失敗しました。しばらくしてから再試行してください。
-      </div>`;
-  }
+    </div>
+    <div id="share-save-status" style="font-family:'DM Sans',sans-serif;font-size:12px;color:var(--text3);line-height:1.7;margin-bottom:16px;display:flex;align-items:center;gap:6px;">
+      <svg style="animation:spin .8s linear infinite;flex-shrink:0;" width="12" height="12" viewBox="0 0 16 16" fill="none">
+        <path d="M8 2a6 6 0 0 1 6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      リンクを準備中...
+    </div>
+    <button onclick="issueShareUrl()"
+      style="display:flex;align-items:center;justify-content:center;gap:7px;width:100%;padding:9px 12px;background:transparent;border:1px solid var(--border2);border-radius:7px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:12px;color:var(--text2);transition:background .15s;box-sizing:border-box;"
+      onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='transparent'">
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M2 8a6 6 0 1 0 1.5-3.9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M2 4v4h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      現在の状態でURLを更新する
+    </button>`;
+
+  // バックグラウンドで保存（await しない → UIをブロックしない）
+  const snap = {
+    id:         token,
+    savedAt:    new Date().toISOString(),
+    data:       generatedData,
+    recurring:  recurringList,
+    categories: selectedCategories
+  };
+  saveSharedProject(token, snap).then(ok => {
+    const statusEl = document.getElementById('share-save-status');
+    if (!statusEl) return; // モーダルが既に閉じられた
+    if (ok) {
+      statusEl.textContent = 'このURLを知っているメンバーがアクセスできます。プロジェクトのスナップショットが共有されます。';
+    } else {
+      statusEl.innerHTML = '<span style="color:#dc2626;">共有データの保存に失敗しました。ページをリロードして再試行してください。</span>';
+    }
+  });
 }
 
 function copyShareUrl() {
