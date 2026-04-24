@@ -3479,12 +3479,15 @@ function addRecurring() {
   adjustTasksToRecurring();
   // ガントを再描画
   renderGantt();
+  // スナップショット保存（ガント共有が有効なら最新状態を自動反映）
+  saveSnapshot();
 }
 
 function removeRecurring(i) {
   recurringList.splice(i, 1);
   renderRecurringList();
   renderGantt();
+  saveSnapshot();
 }
 
 // タスクの終了日を「直前の定例日」に合わせて前倒し調整
@@ -3909,6 +3912,7 @@ function drawRecurringLines(gtBody, dates, COL_W, ROW_H) {
               recurringList[ri].overrides[dt] = newDt;
             }
             renderGantt();
+            saveSnapshot();
           }
           isDragging = false;
         };
@@ -4020,6 +4024,7 @@ function openLinePopup(ri, originalDt, currentDt, anchor, dates) {
           if (recurringList[ri].overrides[originalDt] === undefined) delete recurringList[ri].overrides[originalDt];
           closeLinePopup();
           renderGantt();
+          saveSnapshot();
         });
       }
       grid.appendChild(cell);
@@ -4037,14 +4042,14 @@ function openLinePopup(ri, originalDt, currentDt, anchor, dates) {
   const skipBtn = makePopupBtn('この回をスキップ', '#f59e0b', () => {
     if (!recurringList[ri].overrides) recurringList[ri].overrides = {};
     recurringList[ri].overrides[originalDt] = null;
-    closeLinePopup(); renderGantt();
+    closeLinePopup(); renderGantt(); saveSnapshot();
   });
   btnWrap.appendChild(skipBtn);
 
   if (r.overrides && r.overrides[originalDt] !== undefined) {
     const resetBtn = makePopupBtn('この回をリセット', '#9090a8', () => {
       delete recurringList[ri].overrides[originalDt];
-      closeLinePopup(); renderGantt();
+      closeLinePopup(); renderGantt(); saveSnapshot();
     });
     btnWrap.appendChild(resetBtn);
   }
