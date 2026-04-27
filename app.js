@@ -3494,10 +3494,14 @@ function renderRecurringList() {
       nameEl.style.background = '';
       nameEl.style.boxShadow = '';
       const newName = nameEl.textContent.trim();
-      recurringList[i].name = newName || recurringList[i].name;
-      if (!newName) nameEl.textContent = recurringList[i].name;
-      renderGantt();
-      saveSnapshot();
+      if (newName && newName !== recurringList[i].name) {
+        recurringList[i].name = newName;
+        renderRecurringList(); // UI更新（nameElはここで差し替わる）
+        renderGantt();
+        saveSnapshot();
+      } else if (!newName) {
+        nameEl.textContent = recurringList[i].name;
+      }
     });
     nameEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); nameEl.blur(); } });
 
@@ -4939,7 +4943,7 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
     // 右行・バー
     const today = toDateStr(new Date());
     const rcRow = document.createElement('div');
-    rcRow.style.cssText=`width:${gridW}px;height:${rowH}px;border-bottom:1px solid var(--border);position:relative;overflow:hidden;box-sizing:border-box;`;
+    rcRow.style.cssText=`width:${gridW}px;height:${rowH}px;position:relative;overflow:hidden;box-sizing:border-box;`;
     dates.forEach((dt,di)=>{
       const off = isOffDay(dt);
       const isT  = dt === today;
@@ -5943,7 +5947,7 @@ function renderGantt() {
     });
 
     const rPhaseRow = document.createElement('div');
-    rPhaseRow.style.cssText = `width:${gridW}px;height:34px;background:var(--bg2);border-bottom:1px solid var(--border);position:relative;overflow:visible;`;
+    rPhaseRow.style.cssText = `width:${gridW}px;height:34px;background:var(--bg2);position:relative;overflow:visible;`;
     dates.forEach((dt,di)=>{
       const off=isOffDay(dt);const isT=dt===today;const isMStart=dt.endsWith('-01')||dt===d.startDate;
       const cell=document.createElement('div');
@@ -6213,7 +6217,7 @@ function renderGantt() {
 
       // ── 右：親バー（先に描画行を作成しておく） ──
       const rRow = document.createElement('div');
-      rRow.style.cssText = `width:${gridW}px;height:${ROW_H}px;border-bottom:1px solid var(--border);position:relative;overflow:hidden;box-sizing:border-box;`;
+      rRow.style.cssText = `width:${gridW}px;height:${ROW_H}px;position:relative;overflow:hidden;box-sizing:border-box;`;
       dates.forEach((dt,di)=>{
         const off=isOffDay(dt);const isT=dt===today;const isMStart=dt.endsWith('-01')||dt===d.startDate;
         const cell=document.createElement('div');
@@ -6511,7 +6515,7 @@ function renderGantt() {
     gtLeftBody.appendChild(lAddRow);
 
     const rAddRow = document.createElement('div');
-    rAddRow.style.cssText = `width:${gridW}px;min-height:${isGuestMode?'0':'32px'};${isGuestMode?'display:none;':''}border-bottom:1px solid var(--border);position:relative;overflow:hidden;`;
+    rAddRow.style.cssText = `width:${gridW}px;min-height:${isGuestMode?'0':'32px'};${isGuestMode?'display:none;':''}position:relative;overflow:hidden;`;
     if (!isGuestMode) {
       dates.forEach((dt,di)=>{
         const off=isOffDay(dt); const isT=dt===today; const isMStart=dt.endsWith('-01')||dt===d.startDate;
