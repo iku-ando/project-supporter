@@ -4777,7 +4777,7 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
 
     // 左行
     const lcRow = document.createElement('div');
-    lcRow.style.cssText = `display:flex;align-items:center;gap:4px;padding:0 6px 0 ${14+indent}px;height:${rowH}px;border-bottom:1px solid var(--border);border-left:${depth+1}px solid ${phaseColor}${depth===1?'66':'44'};background:${bgAlpha};box-sizing:border-box;`;
+    lcRow.style.cssText = `display:flex;align-items:center;gap:4px;padding:0 6px 0 ${26+indent}px;height:${rowH}px;border-bottom:1px solid var(--border);border-left:${depth+1}px solid ${phaseColor}${depth===1?'66':'44'};background:${bgAlpha};box-sizing:border-box;`;
 
     const cHandle = document.createElement('div');
     if (isGuestMode) {
