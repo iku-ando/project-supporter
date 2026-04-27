@@ -4745,8 +4745,10 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
   const ttName  = container.querySelector('#gt-tt-name');
   const ttDates = container.querySelector('#gt-tt-dates');
 
-  // startDate が早い順に並び替え（null は末尾）
+  // startDate が早い順に並び替え（unscheduled は末尾、null は末尾）
   children.sort((a, b) => {
+    if (a.unscheduled && !b.unscheduled) return 1;
+    if (!a.unscheduled && b.unscheduled) return -1;
     const sa = a.startDate || d.startDate;
     const sb = b.startDate || d.startDate;
     if (sa < sb) return -1;
@@ -4947,6 +4949,55 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
       dcell.style.cssText=`position:absolute;left:${di*COL_W}px;top:0;width:${COL_W}px;height:100%;background:${cellBg};border-left:${isMStart?'1px solid var(--border2)':'none'};box-sizing:border-box;`;
       rcRow.appendChild(dcell);
     });
+
+    // ── 日付未設定（unscheduled）: 空行 + ドラッグで期間を設定 ──
+    if (child.unscheduled) {
+      rcRow.style.cursor = 'crosshair';
+      const hintEl = document.createElement('div');
+      hintEl.style.cssText = `position:absolute;inset:0;display:flex;align-items:center;padding:0 14px;pointer-events:none;`;
+      hintEl.innerHTML = `<span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--border2);letter-spacing:.5px;user-select:none;">ドラッグして期間をセット</span>`;
+      rcRow.appendChild(hintEl);
+
+      if (!isGuestMode) {
+        let previewBar = null;
+        let startDragIdx = -1;
+        rcRow.addEventListener('mousedown', e => {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          const rect = rcRow.getBoundingClientRect();
+          startDragIdx = Math.max(0, Math.min(Math.floor((e.clientX - rect.left) / COL_W), dates.length - 1));
+          previewBar = document.createElement('div');
+          previewBar.style.cssText = `position:absolute;left:${startDragIdx * COL_W + 1}px;top:3px;width:${COL_W - 2}px;height:${rowH - 8}px;background:${phaseColor};opacity:.55;border-radius:99px;pointer-events:none;z-index:10;`;
+          rcRow.appendChild(previewBar);
+          hintEl.style.display = 'none';
+          const onMove = ev => {
+            const idx = Math.max(startDragIdx, Math.min(Math.floor((ev.clientX - rect.left) / COL_W), dates.length - 1));
+            if (previewBar) previewBar.style.width = Math.max(COL_W - 2, (idx - startDragIdx + 1) * COL_W - 2) + 'px';
+          };
+          const onUp = ev => {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            if (!previewBar) return;
+            const endIdx = Math.max(startDragIdx, Math.min(Math.floor((ev.clientX - rect.left) / COL_W), dates.length - 1));
+            child.startDate = dates[startDragIdx];
+            child.endDate = dates[endIdx];
+            child.days = daysBetween(child.startDate, child.endDate) + 1;
+            delete child.unscheduled;
+            saveSnapshot();
+            renderGantt();
+          };
+          document.addEventListener('mousemove', onMove);
+          document.addEventListener('mouseup', onUp);
+        });
+      }
+
+      gtLeftBody.appendChild(lcRow);
+      gtRightBody.appendChild(rcRow);
+      if (child.children && child.children.length && !child._collapsed) {
+        renderScheduleChildren(child.children, child, depth+1, d, dates, gridW, COL_W, ROW_H, phaseColor, phase, gtLeftBody, gtRightBody, container);
+      }
+      return;
+    }
 
     // 子を持つ場合はタグライン風（非インタラクティブ）、リーフはフルバー（インタラクティブ）
     const hasSubChildren = child.children && child.children.length > 0;
@@ -6008,8 +6059,8 @@ function renderGantt() {
         addSubBtn.onclick=e=>{
           e.stopPropagation();
           if(!item.children) item.children=[];
-          item.children.push({id:Date.now()+Math.random(),name:'サブタスク',phase:item.phase,days:2,startDate:null,endDate:null,children:[]});
-          assignScheduleDates(); renderGantt();
+          item.children.push({id:Date.now()+Math.random(),name:'サブタスク',phase:item.phase,days:2,startDate:null,endDate:null,unscheduled:true,children:[]});
+          renderGantt();
         };
       }
 
