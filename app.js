@@ -970,25 +970,31 @@ async function saveGanttShare(projectId) {
       recurring:  recurringList,
       categories: selectedCategories
     };
-    // saveToSupabase と同じ直接fetch方式（SDK upsert はハングの可能性があるため使わない）
-    // snap_id は常に同じ値 → 2回目以降は UPDATE → on_conflict=snap_id を明示
-    const headers = await _getAuthHeaders({
-      'Content-Type': 'application/json',
-      'Prefer': 'resolution=merge-duplicates'
+    const headers    = await _getAuthHeaders({ 'Content-Type': 'application/json' });
+    const filterUrl  = `${SUPABASE_URL}/rest/v1/projects?snap_id=eq.${encodeURIComponent(snapId)}&user_key=eq.${encodeURIComponent(getUserKey())}`;
+    const body       = JSON.stringify({
+      user_key:     getUserKey(),
+      snap_id:      snapId,
+      project_id:   projectId,
+      project_name: generatedData?.projectName || '無題',
+      data:         snap,
+      saved_at:     new Date().toISOString()
     });
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/projects?on_conflict=snap_id`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        user_key:     getUserKey(),
-        snap_id:      snapId,
-        project_id:   projectId,
-        project_name: generatedData?.projectName || '無題',
-        data:         snap,
-        saved_at:     new Date().toISOString()
-      })
+
+    // ① 既存の共有行を削除（初回は0件なので無視）
+    await fetch(filterUrl, { method: 'DELETE', headers }).catch(() => {});
+
+    // ② 新規INSERTで上書き（upsert競合を回避するためDELETE+INSERTの組み合わせ）
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/projects`, {
+      method:  'POST',
+      headers: { ...headers, 'Prefer': 'return=minimal' },
+      body
     });
-    if (!res.ok) { console.warn('ガント共有保存失敗:', res.status, await res.text().catch(()=>'')); return false; }
+    if (!res.ok) {
+      const msg = await res.text().catch(() => '');
+      console.warn('ガント共有保存失敗:', res.status, msg);
+      return false;
+    }
     return true;
   } catch (e) {
     console.warn('ガント共有保存失敗:', e);
@@ -1156,6 +1162,7 @@ async function issueGanttShareUrl() {
     if (!statusEl) return;
     if (ok) {
       statusEl.textContent = 'スケジュールのみが表示されます。保存するたびに自動で最新状態に更新されます。';
+      saveSnapshot(); // ganttShareActive=true を永続化
     } else {
       statusEl.innerHTML = '<span style="color:#dc2626;">保存に失敗しました。再試行してください。</span>';
       generatedData.ganttShareActive = false;
