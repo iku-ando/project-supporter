@@ -487,10 +487,10 @@
     <!-- 追加フォーム -->
     <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px;">
       <div style="font-size:11px;font-family:'DM Mono',monospace;color:var(--text3);letter-spacing:.8px;text-transform:uppercase;margin-bottom:12px;">新しい定例</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+      <div style="display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:8px;margin-bottom:10px;">
         <div>
           <div style="font-size:10px;color:var(--text3);margin-bottom:4px;">曜日</div>
-          <select id="rec-dow" style="width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:8px 10px;color:var(--text);font-size:13px;outline:none;">
+          <select id="rec-dow" style="width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:8px 8px;color:var(--text);font-size:12px;outline:none;">
             <option value="1">月曜日</option>
             <option value="2">火曜日</option>
             <option value="3">水曜日</option>
@@ -501,8 +501,17 @@
           </select>
         </div>
         <div>
+          <div style="font-size:10px;color:var(--text3);margin-bottom:4px;">頻度</div>
+          <select id="rec-interval" style="width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:8px 8px;color:var(--text);font-size:12px;outline:none;">
+            <option value="1">毎週</option>
+            <option value="2">隔週</option>
+            <option value="3">3週ごと</option>
+            <option value="4">4週ごと</option>
+          </select>
+        </div>
+        <div>
           <div style="font-size:10px;color:var(--text3);margin-bottom:4px;">開始時刻</div>
-          <input id="rec-time" type="time" value="10:00" style="width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:8px 10px;color:var(--text);font-size:13px;outline:none;">
+          <input id="rec-time" type="time" value="10:00" style="width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:8px 8px;color:var(--text);font-size:12px;outline:none;">
         </div>
       </div>
       <div style="margin-bottom:12px;">

@@ -3465,6 +3465,13 @@ function renderRecColorOpts() {
   });
 }
 
+function recIntervalLabel(interval) {
+  const n = interval || 1;
+  if (n === 1) return '毎週';
+  if (n === 2) return '隔週';
+  return `${n}週ごと`;
+}
+
 function renderRecurringList() {
   const list = document.getElementById('recurring-list');
   list.innerHTML = '';
@@ -3475,22 +3482,57 @@ function renderRecurringList() {
   recurringList.forEach((r, i) => {
     const row = document.createElement('div');
     row.style.cssText = `display:flex;align-items:center;gap:10px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 14px;`;
-    row.innerHTML = `
-      <div style="width:10px;height:10px;border-radius:50%;background:${r.color};flex-shrink:0;"></div>
-      <div style="flex:1;">
-        <div style="font-size:13px;color:var(--text);font-weight:500;">${r.name}</div>
-        <div style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;">毎週${DOW_LABELS[r.dow]}曜日 ${r.time}</div>
-      </div>
-      <button onclick="removeRecurring(${i})" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:2px 6px;border-radius:4px;transition:color .15s;" onmouseover="this.style.color='#ff6b6b'" onmouseout="this.style.color='var(--text3)'">×</button>`;
+
+    // 名前（インライン編集可能）
+    const nameEl = document.createElement('div');
+    nameEl.contentEditable = 'true';
+    nameEl.textContent = r.name;
+    nameEl.style.cssText = `font-size:13px;color:var(--text);font-weight:500;outline:none;border-radius:3px;padding:1px 3px;margin:-1px -3px;cursor:text;min-width:20px;`;
+    nameEl.title = 'クリックして名前を変更';
+    nameEl.addEventListener('focus', () => { nameEl.style.background = 'var(--bg2)'; nameEl.style.boxShadow = '0 0 0 1px var(--accent)'; });
+    nameEl.addEventListener('blur', () => {
+      nameEl.style.background = '';
+      nameEl.style.boxShadow = '';
+      const newName = nameEl.textContent.trim();
+      recurringList[i].name = newName || recurringList[i].name;
+      if (!newName) nameEl.textContent = recurringList[i].name;
+      renderGantt();
+      saveSnapshot();
+    });
+    nameEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); nameEl.blur(); } });
+
+    const metaEl = document.createElement('div');
+    metaEl.style.cssText = `font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:1px;`;
+    metaEl.textContent = `${recIntervalLabel(r.interval)}${DOW_LABELS[r.dow]}曜日 ${r.time}`;
+
+    const info = document.createElement('div');
+    info.style.cssText = `flex:1;min-width:0;`;
+    info.appendChild(nameEl);
+    info.appendChild(metaEl);
+
+    const delBtn = document.createElement('button');
+    delBtn.innerHTML = '×';
+    delBtn.style.cssText = `background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:2px 6px;border-radius:4px;transition:color .15s;flex-shrink:0;`;
+    delBtn.addEventListener('mouseover', () => delBtn.style.color = '#ff6b6b');
+    delBtn.addEventListener('mouseout',  () => delBtn.style.color = 'var(--text3)');
+    delBtn.addEventListener('click', () => removeRecurring(i));
+
+    const dot = document.createElement('div');
+    dot.style.cssText = `width:10px;height:10px;border-radius:50%;background:${r.color};flex-shrink:0;`;
+
+    row.appendChild(dot);
+    row.appendChild(info);
+    row.appendChild(delBtn);
     list.appendChild(row);
   });
 }
 
 function addRecurring() {
-  const name = document.getElementById('rec-name').value.trim() || '定例MTG';
-  const dow  = +document.getElementById('rec-dow').value;
-  const time = document.getElementById('rec-time').value || '10:00';
-  recurringList.push({ name, dow, time, color: selectedRecColor });
+  const name     = document.getElementById('rec-name').value.trim() || '定例MTG';
+  const dow      = +document.getElementById('rec-dow').value;
+  const time     = document.getElementById('rec-time').value || '10:00';
+  const interval = +(document.getElementById('rec-interval')?.value || 1);
+  recurringList.push({ name, dow, time, color: selectedRecColor, interval });
   document.getElementById('rec-name').value = '';
   renderRecurringList();
   // タスク期限をこの定例に合わせて調整
@@ -3837,11 +3879,27 @@ function drawRecurringLines(gtBody, dates, COL_W, ROW_H) {
 
   recurringList.forEach((r, ri) => {
     if (!r.overrides) r.overrides = {};
+    const interval = r.interval || 1;
+
+    // interval > 1 の場合: プロジェクト開始日から最初の r.dow 出現日を基準に週数カウント
+    let firstOccurrence = null;
+    if (interval > 1 && generatedData?.startDate) {
+      const sd = parseDate(generatedData.startDate);
+      const daysToFirst = (r.dow - sd.getDay() + 7) % 7;
+      firstOccurrence = new Date(sd);
+      firstOccurrence.setDate(firstOccurrence.getDate() + daysToFirst);
+    }
 
     dates.forEach((dt, di) => {
       const dow = parseDate(dt).getDay();
       if (dow !== r.dow) return;
       if (r.overrides[dt] === null) return;
+
+      // 隔週・n週ごとの場合、week番号が合わない週はスキップ
+      if (interval > 1 && firstOccurrence) {
+        const weeksDiff = Math.round((parseDate(dt) - firstOccurrence) / (7 * 86400000));
+        if (weeksDiff < 0 || weeksDiff % interval !== 0) return;
+      }
 
       const movedTo  = r.overrides[dt];
       const targetDt = movedTo || dt;
