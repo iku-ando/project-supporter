@@ -3948,6 +3948,27 @@ function drawRecurringLines(gtBody, dates, COL_W, ROW_H) {
   });
 }
 
+// ── Todayライン（スケジュール期間内に今日が含まれるとき縦線を表示）──
+function drawTodayLine(gtBody, dates, COL_W, today) {
+  const todayIdx = dates.indexOf(today);
+  if (todayIdx < 0) return; // 期間外
+
+  const x = todayIdx * COL_W + Math.floor(COL_W / 2);
+
+  // 縦ライン
+  const line = document.createElement('div');
+  line.className = 'today-vline';
+  line.style.cssText = `position:absolute;left:${x - 1}px;top:0;width:2px;height:100%;background:var(--green);opacity:.7;z-index:11;pointer-events:none;`;
+  gtBody.appendChild(line);
+
+  // TODAY ラベル（ラインの最上部に小ピル）
+  const pill = document.createElement('div');
+  pill.className = 'today-vline-label';
+  pill.style.cssText = `position:absolute;left:${x}px;top:3px;transform:translateX(-50%);background:var(--green);color:#fff;font-family:'DM Mono',monospace;font-size:8px;letter-spacing:.8px;padding:2px 5px;border-radius:3px;white-space:nowrap;z-index:12;pointer-events:none;`;
+  pill.textContent = 'TODAY';
+  gtBody.appendChild(pill);
+}
+
 // 定例ラインのポップアップ（日付変更カレンダー・スキップ・リセット）
 let activeLinePopup = null;
 function openLinePopup(ri, originalDt, currentDt, anchor, dates) {
@@ -5209,7 +5230,7 @@ function renderGanttByPhase() {
       <div id="gt-tt-name" style="font-weight:500;margin-bottom:3px;"></div>
       <div id="gt-tt-dates" style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);"></div>
     </div>
-    <div style="display:flex;flex:1;min-height:0;overflow:hidden;">
+    <div id="gt-inner" style="display:flex;flex:1;min-height:0;overflow:hidden;">
       <div id="gt-left" style="width:${LABEL_W}px;min-width:${LABEL_W}px;flex-shrink:0;display:flex;flex-direction:column;min-height:0;">
         <div id="gt-left-head" style="flex-shrink:0;background:var(--bg2);border-bottom:1px solid var(--border);">
           <div style="height:22px;border-bottom:1px solid var(--border);"></div>
@@ -5508,6 +5529,7 @@ function renderGanttByPhase() {
   gtRightBody.appendChild(rAddPhase);
 
   drawRecurringLines(gtRightBody, dates, COL_W, ROW_H);
+  drawTodayLine(gtRightBody, dates, COL_W, today);
 }
 
 // ── スケジュールバークリック時のポップアップ ──
@@ -5632,7 +5654,7 @@ function renderGantt() {
       <div id="gt-tt-name" style="font-weight:500;margin-bottom:3px;"></div>
       <div id="gt-tt-dates" style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);"></div>
     </div>
-    <div style="display:flex;flex:1;min-height:0;overflow:hidden;">
+    <div id="gt-inner" style="display:flex;flex:1;min-height:0;overflow:hidden;">
       <!-- 左ペイン：ラベル列（固定） -->
       <div id="gt-left" style="width:${LABEL_W}px;min-width:${LABEL_W}px;flex-shrink:0;display:flex;flex-direction:column;min-height:0;">
         <!-- ヘッダー空白 -->
@@ -6370,6 +6392,8 @@ function renderGantt() {
 
   // 定例ラインを描画
   drawRecurringLines(gtRightBody, dates, COL_W, ROW_H);
+  // Todayライン
+  drawTodayLine(gtRightBody, dates, COL_W, today);
   // ── 公開日（プロジェクト終了日）の赤ライン ──
   const _endIdx = dates.indexOf(d.endDate);
   if (_endIdx >= 0) {
@@ -6662,6 +6686,37 @@ function setupBarDrag(bar, mi, ti, COL_W, projectStart) {
 }
 
 // ─── EXCEL EXPORT ───
+// ── PDF出力（ブラウザの印刷ダイアログ → 「PDFとして保存」）──
+function exportPdf() {
+  if (!generatedData) return;
+  window.print();
+}
+
+// 印刷前にガントのスクロール制約を解除
+let _printSaved = [];
+window.addEventListener('beforeprint', () => {
+  _printSaved = [];
+  const targets = [
+    { sel: '#gt-inner',    props: { overflow: 'visible', height: 'auto', minHeight: '0' } },
+    { sel: '#gt-right',    props: { overflow: 'visible', height: 'auto', maxHeight: 'none' } },
+    { sel: '#gt-left',     props: { overflow: 'visible', height: 'auto' } },
+    { sel: '#gt-left-body',props: { overflow: 'visible', height: 'auto', flex: 'none' } },
+  ];
+  targets.forEach(({ sel, props }) => {
+    const el = document.querySelector(sel);
+    if (!el) return;
+    const saved = {};
+    Object.keys(props).forEach(k => { saved[k] = el.style[k] || ''; el.style[k] = props[k]; });
+    _printSaved.push({ el, saved });
+  });
+});
+window.addEventListener('afterprint', () => {
+  _printSaved.forEach(({ el, saved }) => {
+    Object.keys(saved).forEach(k => { el.style[k] = saved[k]; });
+  });
+  _printSaved = [];
+});
+
 function exportExcel() {
   const d = generatedData;
   if (!d) return;

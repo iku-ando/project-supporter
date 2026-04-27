@@ -2111,3 +2111,49 @@ body {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* ─── PRINT（PDF出力）─── */
+@media print {
+  @page { size: landscape; margin: 10mm; }
+
+  body, html {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    background: var(--bg) !important;
+  }
+
+  /* ガント以外のUI要素を非表示 */
+  #icon-rail,
+  .sidebar, .sidebar-overlay,
+  #panel-0, #panel-1,
+  #tab-controls-row,
+  #proj-settings-btn,
+  #stats-row,
+  .gantt-toolbar,
+  .loading-overlay,
+  #auth-modal, #gantt-share-modal, #share-url-modal,
+  #gt-tooltip, #gt-col-resize { display: none !important; }
+
+  .panel { display: none !important; }
+  #panel-2 { display: block !important; padding: 0 !important; }
+
+  .main { padding: 0 !important; }
+  .app { display: block !important; }
+
+  /* プロジェクト名を小さく */
+  #result-project-name { font-size: 16px !important; margin-bottom: 6px !important; }
+
+  /* ガントを全展開 */
+  .gantt-wrap  { overflow: visible !important; border-radius: 4px !important; }
+  .gantt-container {
+    overflow: visible !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+  #gt-inner    { overflow: visible !important; height: auto !important; min-height: 0 !important; }
+  #gt-left     { overflow: visible !important; height: auto !important; }
+  #gt-left-body{ overflow: visible !important; height: auto !important; flex: none !important; }
+  #gt-right    { overflow: visible !important; height: auto !important; }
+  #gt-right-head { position: relative !important; top: auto !important; z-index: auto !important; }
+  #gt-right-body { height: auto !important; }
+}
