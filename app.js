@@ -4777,7 +4777,7 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
 
     // 左行
     const lcRow = document.createElement('div');
-    lcRow.style.cssText = `display:flex;align-items:center;gap:4px;padding:0 6px 0 ${6+indent}px;height:${rowH}px;border-bottom:1px solid var(--border);border-left:${depth+1}px solid ${phaseColor}${depth===1?'66':'44'};background:${bgAlpha};box-sizing:border-box;`;
+    lcRow.style.cssText = `display:flex;align-items:center;gap:4px;padding:0 6px 0 ${14+indent}px;height:${rowH}px;border-bottom:1px solid var(--border);border-left:${depth+1}px solid ${phaseColor}${depth===1?'66':'44'};background:${bgAlpha};box-sizing:border-box;`;
 
     const cHandle = document.createElement('div');
     if (isGuestMode) {
@@ -6014,7 +6014,7 @@ function renderGantt() {
 
       // ── 左行：ハンドル・タスク名・サブ追加・削除 ──
       const lRow = document.createElement('div');
-      lRow.style.cssText = `position:relative;display:flex;align-items:center;gap:5px;padding:0 6px 0 4px;height:${ROW_H}px;border-bottom:1px solid var(--border);border-left:2px solid ${phaseColor}55;box-sizing:border-box;background:var(--bg2);`;
+      lRow.style.cssText = `position:relative;display:flex;align-items:center;gap:5px;padding:0 6px 0 16px;height:${ROW_H}px;border-bottom:1px solid var(--border);border-left:2px solid ${phaseColor}55;box-sizing:border-box;background:var(--bg2);`;
       lRow.setAttribute('data-sched-id', item.id);
       lRow.setAttribute('data-sched-phase', phase);
 
