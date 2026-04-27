@@ -1140,8 +1140,9 @@ async function issueGanttShareUrl() {
   // 「常に最新」フラグをセット
   generatedData.ganttShareActive = true;
 
-  // バックグラウンドで保存
-  saveGanttShare(projectId).then(ok => {
+  // バックグラウンドで保存（12秒でタイムアウト）
+  const _saveTimeout = new Promise(resolve => setTimeout(() => resolve(false), 12000));
+  Promise.race([saveGanttShare(projectId), _saveTimeout]).then(ok => {
     const statusEl = document.getElementById('gantt-share-status');
     if (!statusEl) return;
     if (ok) {
@@ -4249,9 +4250,22 @@ function deletePhase(phase) {
   document.querySelectorAll('.phase-ghost-picker').forEach(el => el.remove());
   _deletedPhases.add(phase);
   delete PHASE_BAR_COLORS[phase];
-  if (generatedData) generatedData.phases = (generatedData.phases||[]).filter(p=>p!==phase);
+  if (generatedData) {
+    generatedData.phases = (generatedData.phases||[]).filter(p=>p!==phase);
+    // 削除フェーズを持つアイテムを最初の残存フェーズに再割り当て（孤立を防ぐ）
+    const firstPhase = generatedData.phases[0] || '';
+    const reassignDeep = items => items && items.forEach(s => {
+      if (s.phase === phase) s.phase = firstPhase;
+      if (s.children) reassignDeep(s.children);
+    });
+    if (generatedData.scheduleItems) reassignDeep(generatedData.scheduleItems);
+    generatedData.members.forEach(m => (m.tasks||[]).forEach(t => { if (t.phase === phase) t.phase = firstPhase; }));
+    // phaseColorsからも削除
+    if (generatedData.phaseColors) delete generatedData.phaseColors[phase];
+  }
   renderPhaseLegend();
   renderGantt();
+  saveSnapshot(); // 削除を永続化
 }
 
 function openPhasePicker(phase, swatchEl) {
@@ -4350,6 +4364,11 @@ function renderPhaseLegend() {
                   if (s.children) renamePhaseDeep(s.children);
                 });
                 renamePhaseDeep(generatedData.scheduleItems);
+              }
+              // phaseColorsのキーも旧→新に更新
+              if (generatedData.phaseColors && generatedData.phaseColors[phase] !== undefined) {
+                generatedData.phaseColors[newName] = generatedData.phaseColors[phase];
+                delete generatedData.phaseColors[phase];
               }
             }
             renderPhaseLegend(); renderGantt(); saveSnapshot();
@@ -5862,11 +5881,17 @@ function renderGantt() {
   const phases = d.phases && d.phases.length ? d.phases : ['企画','制作','確認','納品'];
   const items = d.scheduleItems || [];
 
-  // フェーズ別グループ化
+  // フェーズ別グループ化（孤立アイテムは先頭フェーズへ吸収）
+  const phaseSet = new Set(phases);
   const phaseItemMap = {};
   phases.forEach(p => { phaseItemMap[p] = []; });
   items.forEach(item => {
-    const p = item.phase || phases[0];
+    let p = item.phase || phases[0];
+    if (!phaseSet.has(p)) {
+      // 存在しないフェーズを持つ孤立アイテム → 先頭フェーズに修正して保持
+      p = phases[0] || '';
+      item.phase = p;
+    }
     if (!phaseItemMap[p]) phaseItemMap[p] = [];
     phaseItemMap[p].push(item);
   });
