@@ -971,11 +971,12 @@ async function saveGanttShare(projectId) {
       categories: selectedCategories
     };
     // saveToSupabase と同じ直接fetch方式（SDK upsert はハングの可能性があるため使わない）
+    // snap_id は常に同じ値 → 2回目以降は UPDATE → on_conflict=snap_id を明示
     const headers = await _getAuthHeaders({
       'Content-Type': 'application/json',
       'Prefer': 'resolution=merge-duplicates'
     });
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/projects`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/projects?on_conflict=snap_id`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -987,7 +988,7 @@ async function saveGanttShare(projectId) {
         saved_at:     new Date().toISOString()
       })
     });
-    if (!res.ok) { console.warn('ガント共有保存失敗:', res.status, await res.text()); return false; }
+    if (!res.ok) { console.warn('ガント共有保存失敗:', res.status, await res.text().catch(()=>'')); return false; }
     return true;
   } catch (e) {
     console.warn('ガント共有保存失敗:', e);
