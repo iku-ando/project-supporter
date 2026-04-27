@@ -960,7 +960,7 @@ function copyShareUrl() {
 
 // ガントチャートのみを公開共有（保存するたびに自動更新）
 async function saveGanttShare(projectId) {
-  if (!sbClient || !currentUser || !projectId || !generatedData) return false;
+  if (!currentUser || !projectId || !generatedData) return false;
   try {
     const snapId = 'share_gantt_' + projectId;
     const snap   = {
@@ -970,16 +970,24 @@ async function saveGanttShare(projectId) {
       recurring:  recurringList,
       categories: selectedCategories
     };
-    // sbClientを直接使用（_getAuthHeadersのgetSession競合を回避）
-    const { error } = await sbClient.from('projects').upsert({
-      user_key:     getUserKey(),
-      snap_id:      snapId,
-      project_id:   projectId,
-      project_name: generatedData?.projectName || '無題',
-      data:         snap,
-      saved_at:     new Date().toISOString()
-    }, { onConflict: 'snap_id' });
-    if (error) { console.warn('ガント共有保存失敗:', error); return false; }
+    // saveToSupabase と同じ直接fetch方式（SDK upsert はハングの可能性があるため使わない）
+    const headers = await _getAuthHeaders({
+      'Content-Type': 'application/json',
+      'Prefer': 'resolution=merge-duplicates'
+    });
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/projects`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        user_key:     getUserKey(),
+        snap_id:      snapId,
+        project_id:   projectId,
+        project_name: generatedData?.projectName || '無題',
+        data:         snap,
+        saved_at:     new Date().toISOString()
+      })
+    });
+    if (!res.ok) { console.warn('ガント共有保存失敗:', res.status, await res.text()); return false; }
     return true;
   } catch (e) {
     console.warn('ガント共有保存失敗:', e);
