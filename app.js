@@ -4868,7 +4868,12 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
         const v=cName.textContent.trim()||child.name; child.name=v;
         const bl=document.getElementById(cBarLabelId); if(bl) bl.textContent=v;
       });
-      cName.addEventListener('blur',()=>renderGantt());
+      cName.addEventListener('blur', () => {
+        _blockBarPopup = true;
+        requestAnimationFrame(() => { _blockBarPopup = false; });
+        if (!cName.textContent.trim()) cName.textContent = child.name;
+        saveSnapshot();
+      });
       cName.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();cName.blur();}});
     }
 
@@ -5235,6 +5240,7 @@ function renderScheduleChildren(children, parentItem, depth, d, dates, gridW, CO
 let currentGanttView = 'member';
 let ganttLabelWidth = 280;
 let ganttColWidth = 28; // ズーム用カラム幅（デフォルト28px = 100%）
+let _blockBarPopup = false; // タスク名編集blur後のバーポップアップ誤開を防ぐフラグ
 const GANTT_COL_DEFAULT = 28;
 const GANTT_COL_STEPS = [8, 10, 12, 16, 20, 28, 36, 48]; // ズームステップ
 let isGuestMode   = false; // 共有URLまたはviewer権限のとき true
@@ -5649,6 +5655,7 @@ function renderGanttByPhase() {
 
 // ── スケジュールバークリック時のポップアップ ──
 function showBarPopup(e, item) {
+  if (_blockBarPopup) { _blockBarPopup = false; return; } // 名前編集直後はスキップ
   e.stopPropagation();
   document.querySelectorAll('.gantt-bar-popup').forEach(p => p.remove());
 
@@ -6045,7 +6052,12 @@ function renderGantt() {
           const bl = document.getElementById(barLabelId);
           if (bl) bl.textContent = v;
         });
-        nameEl.addEventListener('blur', () => renderGantt());
+        nameEl.addEventListener('blur', () => {
+          _blockBarPopup = true;
+          requestAnimationFrame(() => { _blockBarPopup = false; });
+          if (!nameEl.textContent.trim()) nameEl.textContent = item.name;
+          saveSnapshot();
+        });
         nameEl.addEventListener('keydown', e => { if(e.key==='Enter'){e.preventDefault();nameEl.blur();} });
       }
 
