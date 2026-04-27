@@ -4645,10 +4645,11 @@ function addScheduleItem(phase) {
     days: 3,
     startDate: null,
     endDate: null,
+    unscheduled: true, // 日付未設定状態：バーを表示しない
     children: []
   };
   d.scheduleItems.push(newItem);
-  assignScheduleDates();
+  // assignScheduleDates() は呼ばない（未設定のまま保持）
   renderGantt();
 }
 
@@ -4706,6 +4707,7 @@ function assignScheduleDates() {
     let cursor = slot.start;
     group.forEach(item => {
       if (item.startDate && item.endDate) { cursor = addDays(item.endDate, 1); return; }
+      if (item.unscheduled) return; // 日付未設定アイテムはスキップ
       const scaled = Math.max(1, Math.round((item.days || 3) / totalTaskDays * slotDays));
       item.startDate = cursor > slot.end ? slot.end : cursor;
       item.endDate   = addDays(item.startDate, scaled - 1);
@@ -5898,9 +5900,10 @@ function renderGantt() {
       rPhaseRow.appendChild(cell);
     });
     // タグラインスパン線（フェーズ内アイテムの最早〜最遅日：子・孫の有効範囲を使用）
-    if (phaseItems.length) {
+    const scheduledItems = phaseItems.filter(it => !it.unscheduled && (it.startDate || (it.children && it.children.some(c => c.startDate))));
+    if (scheduledItems.length) {
       const allEffStarts = [], allEffEnds = [];
-      phaseItems.forEach(it => {
+      scheduledItems.forEach(it => {
         let itStart = it.startDate || d.startDate;
         let itEnd   = it.endDate   || addDays(itStart, (it.days||3)-1);
         if (it.children && it.children.length) {
@@ -5947,6 +5950,7 @@ function renderGantt() {
     }
 
     phaseItems.forEach((item, ii) => {
+      const isUnscheduled = !!item.unscheduled;
       const startDate = item.startDate || d.startDate;
       const endDate   = item.endDate   || addDays(startDate, (item.days||3)-1);
       const startOff  = Math.max(0, daysBetween(d.startDate, startDate));
@@ -6165,6 +6169,53 @@ function renderGantt() {
         cell.style.cssText=`position:absolute;left:${di*COL_W}px;top:0;width:${COL_W}px;height:100%;background:${isT?'rgba(91,78,245,0.06)':off?'rgba(0,0,0,0.03)':'transparent'};border-left:${isMStart?'1px solid var(--border2)':'none'};box-sizing:border-box;`;
         rRow.appendChild(cell);
       });
+
+      // ── 日付未設定（unscheduled）: 空行 + ドラッグで期間を設定 ──
+      if (isUnscheduled) {
+        rRow.style.cursor = 'crosshair';
+        const hintEl = document.createElement('div');
+        hintEl.style.cssText = `position:absolute;inset:0;display:flex;align-items:center;padding:0 14px;pointer-events:none;`;
+        hintEl.innerHTML = `<span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--border2);letter-spacing:.5px;user-select:none;">ドラッグして期間をセット</span>`;
+        rRow.appendChild(hintEl);
+
+        let previewBar = null;
+        let startDragIdx = -1;
+        rRow.addEventListener('mousedown', e => {
+          if (e.button !== 0 || isGuestMode) return;
+          e.preventDefault();
+          const rect = rRow.getBoundingClientRect();
+          startDragIdx = Math.max(0, Math.min(Math.floor((e.clientX - rect.left) / COL_W), dates.length - 1));
+          previewBar = document.createElement('div');
+          previewBar.style.cssText = `position:absolute;left:${startDragIdx * COL_W + 1}px;top:6px;width:${COL_W - 2}px;height:${ROW_H - 12}px;background:${phaseColor};opacity:.55;border-radius:99px;pointer-events:none;z-index:10;`;
+          rRow.appendChild(previewBar);
+          hintEl.style.display = 'none';
+          const onMove = ev => {
+            const idx = Math.max(startDragIdx, Math.min(Math.floor((ev.clientX - rect.left) / COL_W), dates.length - 1));
+            if (previewBar) previewBar.style.width = Math.max(COL_W - 2, (idx - startDragIdx + 1) * COL_W - 2) + 'px';
+          };
+          const onUp = ev => {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            if (!previewBar) return;
+            const endIdx = Math.max(startDragIdx, Math.min(Math.floor((ev.clientX - rect.left) / COL_W), dates.length - 1));
+            item.startDate = dates[startDragIdx];
+            item.endDate = dates[endIdx];
+            item.days = daysBetween(item.startDate, item.endDate) + 1;
+            delete item.unscheduled;
+            saveSnapshot();
+            renderGantt();
+          };
+          document.addEventListener('mousemove', onMove);
+          document.addEventListener('mouseup', onUp);
+        });
+
+        gtLeftBody.appendChild(lRow);
+        gtRightBody.appendChild(rRow);
+        if (item.children && item.children.length && !item._schedCollapsed) {
+          renderScheduleChildren(item.children, item, 1, d, dates, gridW, COL_W, ROW_H, phaseColor, phase, gtLeftBody, gtRightBody, container);
+        }
+        return;
+      }
 
       // 子を持つ場合はタグライン風（非インタラクティブ）、リーフはフルバー
       const itemHasChildren = item.children && item.children.length > 0;
