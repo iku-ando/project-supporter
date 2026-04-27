@@ -1005,16 +1005,30 @@ async function loadGanttShare(projectId) {
 }
 
 async function handleGanttShareLoad(projectId) {
+  // データ取得前にすぐ panel-2 を表示してローディングを出す
+  showPanel(2);
+  applyGanttOnlyUI();
+  const container = document.getElementById('gantt-container');
+  if (container) {
+    container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:240px;gap:12px;color:var(--text3);">
+      <svg style="animation:spin .9s linear infinite;flex-shrink:0;" width="18" height="18" viewBox="0 0 16 16" fill="none">
+        <path d="M8 2a6 6 0 0 1 6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+      </svg>
+      <span style="font-family:'DM Sans',sans-serif;font-size:13px;">データを読み込んでいます…</span>
+    </div>`;
+  }
+
   const snap = await loadGanttShare(projectId);
+  history.replaceState({}, '', location.pathname);
+
   if (snap && snap.data) {
     generatedData      = snap.data;
     recurringList      = snap.recurring  || [];
     selectedCategories = snap.categories || [];
     renderResult(true);
-    showPanel(2);
-    applyGanttOnlyUI();
-    history.replaceState({}, '', location.pathname);
+    renderGantt();
   } else {
+    if (container) container.innerHTML = '';
     const el = document.createElement('div');
     el.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:32px 36px;max-width:340px;width:90%;box-shadow:0 24px 64px rgba(0,0,0,.18);z-index:9999;text-align:center;';
     el.innerHTML = `
@@ -1023,7 +1037,6 @@ async function handleGanttShareLoad(projectId) {
       <div style="font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text2);margin-bottom:22px;line-height:1.6;">このリンクは無効か、まだ公開されていない可能性があります。</div>
       <button onclick="this.parentElement.remove()" style="padding:9px 28px;background:var(--accent);border:none;border-radius:7px;color:#fff;font-family:'Syne',sans-serif;font-size:13px;font-weight:600;cursor:pointer;">閉じる</button>`;
     document.body.appendChild(el);
-    history.replaceState({}, '', location.pathname);
   }
 }
 
@@ -1035,8 +1048,13 @@ function applyGanttOnlyUI() {
   const mainEl = document.querySelector('.main');
   if (mainEl) mainEl.style.paddingLeft = '24px';
 
-  // ガント以外のタブを非表示
-  ['tab-wiki', 'tab-member', 'tab-mtg', 'tab-issues'].forEach(id => {
+  // タブコントロール行ごと非表示（margin-bottom も含めて消す）
+  const tabControlsRow = document.getElementById('tab-controls-row');
+  if (tabControlsRow) tabControlsRow.style.display = 'none';
+  const mainTabsWrap = document.getElementById('main-tabs-wrap');
+  if (mainTabsWrap) mainTabsWrap.style.display = 'none';
+  // 個別タブも念のため非表示
+  ['tab-wiki', 'tab-member', 'tab-mtg', 'tab-issues', 'tab-gantt'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   });
