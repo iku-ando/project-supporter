@@ -4344,9 +4344,15 @@ function renderPhaseLegend() {
             if (generatedData) {
               generatedData.phases = (generatedData.phases||[]).map(p=>p===phase?newName:p);
               generatedData.members.forEach(m=>m.tasks.forEach(t=>{if(t.phase===phase)t.phase=newName;}));
-              if (generatedData.scheduleItems) generatedData.scheduleItems.forEach(s=>{if(s.phase===phase)s.phase=newName;});
+              if (generatedData.scheduleItems) {
+                const renamePhaseDeep = items => items && items.forEach(s => {
+                  if (s.phase === phase) s.phase = newName;
+                  if (s.children) renamePhaseDeep(s.children);
+                });
+                renamePhaseDeep(generatedData.scheduleItems);
+              }
             }
-            renderPhaseLegend(); renderGantt();
+            renderPhaseLegend(); renderGantt(); saveSnapshot();
           } else { renderPhaseLegend(); }
         };
         input.addEventListener('blur', commit);
