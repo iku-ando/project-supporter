@@ -5312,7 +5312,7 @@ function renderGanttByPhase() {
             ${dates.map((dt,di)=>{ const DOW_JP=['日','月','火','水','木','金','土']; const dow=parseDate(dt).getDay(); const isT=dt===today; const col=isT?'var(--accent)':dow===0||isHoliday(dt)?'#dc2626':dow===6?'#2563eb':'var(--text3)'; return `<div style="width:${COL_W}px;min-width:${COL_W}px;text-align:center;font-family:'DM Mono',monospace;font-size:8px;padding:1px 0 3px;color:${col};background:var(--bg2);overflow:hidden;">${COL_W>=14?DOW_JP[dow]:''}</div>`; }).join('')}
           </div>
         </div>
-        <div id="gt-right-body" style="position:relative;width:${gridW}px;"></div>
+        <div id="gt-right-body" style="position:relative;width:${gridW}px;background-image:repeating-linear-gradient(to right,rgba(0,0,0,0.04) 0px,rgba(0,0,0,0.04) 1px,transparent 1px,transparent ${COL_W}px);"></div>
       </div>
     </div>`;
 
@@ -5758,7 +5758,7 @@ function renderGantt() {
           ${recurringList.length ? `<div id="gt-rec-lane" style="position:relative;width:${gridW}px;height:24px;border-top:1px solid var(--border);overflow:visible;"></div>` : ''}
         </div>
         <!-- グリッドボディ -->
-        <div id="gt-right-body" style="position:relative;width:${gridW}px;"></div>
+        <div id="gt-right-body" style="position:relative;width:${gridW}px;background-image:repeating-linear-gradient(to right,rgba(0,0,0,0.04) 0px,rgba(0,0,0,0.04) 1px,transparent 1px,transparent ${COL_W}px);"></div>
       </div>
     </div>
   `;
