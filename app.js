@@ -144,8 +144,9 @@ async function sendAuthEmail() {
     if (error) throw error;
     document.getElementById('_auth-form').style.display = 'none';
     document.getElementById('_auth-sent').style.display = '';
-  } catch {
-    msg.textContent = '送信に失敗しました。しばらく待ってから再試行してください。';
+  } catch (err) {
+    const detail = err?.message || err?.error_description || JSON.stringify(err) || '不明なエラー';
+    msg.textContent = `送信に失敗しました: ${detail}`;
     btn.disabled = false; btn.textContent = 'ログインリンクを送信';
   }
 }
