@@ -26,20 +26,19 @@ function initAuth() {
       _hideLoginModal();
       _showApp();
     } else if (event === 'INITIAL_SESSION' && !session) {
-      // セッションなしの初回ロード
-      _showLoginModal();
+      // セッションなし → ログイン不要でアプリを起動
+      _showApp();
     } else if (event === 'SIGNED_OUT') {
       currentUser = null;
       currentProjectRole = null;
-      appReady = false;
       updateAuthUI();
-      _showLoginModal();
+      _showApp(); // サインアウト後もアプリは使える
     }
   });
 
   // 既存セッション確認（リロード時）
   sbClient.auth.getSession().then(({ data: { session } }) => {
-    if (!session) _showLoginModal();
+    if (!session) _showApp(); // セッションなしでも起動
   });
 }
 
