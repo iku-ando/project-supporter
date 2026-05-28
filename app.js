@@ -90,7 +90,7 @@ function _showLoginModal() {
     modal.innerHTML = `
       <div style="width:420px;max-width:90vw;background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:44px 40px;box-shadow:0 8px 48px rgba(0,0,0,.12);">
         <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:700;color:var(--text);margin-bottom:4px;">Project Supporter</div>
-        <div style="font-size:13px;color:var(--text3);margin-bottom:36px;font-family:'DM Sans',sans-serif;">メールアドレスにログインリンクを送信します</div>
+        <div style="font-size:13px;color:var(--text3);margin-bottom:36px;font-family:'DM Sans',sans-serif;">メールアドレスとパスワードでログイン</div>
         <div id="_auth-form">
           <div style="margin-bottom:14px;">
             <label style="display:block;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-bottom:6px;">メールアドレス</label>
@@ -98,25 +98,27 @@ function _showLoginModal() {
               style="width:100%;padding:11px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;box-sizing:border-box;outline:none;transition:border-color .15s;"
               onfocus="this.style.borderColor='var(--accent)'"
               onblur="this.style.borderColor='var(--border)'"
-              onkeydown="if(event.key==='Enter') sendAuthEmail()">
+              onkeydown="if(event.key==='Enter') document.getElementById('_auth-password').focus()">
           </div>
-          <button onclick="sendAuthEmail()" id="_auth-btn"
-            style="width:100%;padding:12px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-family:'Syne',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:opacity .15s;"
+          <div style="margin-bottom:20px;">
+            <label style="display:block;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-bottom:6px;">パスワード</label>
+            <input id="_auth-password" type="password" placeholder="••••••••"
+              style="width:100%;padding:11px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;box-sizing:border-box;outline:none;transition:border-color .15s;"
+              onfocus="this.style.borderColor='var(--accent)'"
+              onblur="this.style.borderColor='var(--border)'"
+              onkeydown="if(event.key==='Enter') signInWithPassword()">
+          </div>
+          <button onclick="signInWithPassword()" id="_auth-btn"
+            style="width:100%;padding:12px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-family:'Syne',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:opacity .15s;margin-bottom:10px;"
             onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
-            ログインリンクを送信
+            ログイン
+          </button>
+          <button onclick="signUpWithPassword()" id="_auth-signup-btn"
+            style="width:100%;padding:12px;background:none;color:var(--text2);border:1px solid var(--border2);border-radius:8px;font-family:'Syne',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:opacity .15s;"
+            onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'">
+            新規登録
           </button>
           <div id="_auth-msg" style="margin-top:10px;font-size:12px;color:#dc2626;text-align:center;min-height:16px;"></div>
-        </div>
-        <div id="_auth-sent" style="display:none;text-align:center;padding:8px 0;">
-          <div style="width:52px;height:52px;border-radius:50%;background:rgba(91,78,245,.1);display:flex;align-items:center;justify-content:center;margin:0 auto 18px;">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </div>
-          <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:var(--text);margin-bottom:8px;">メールを確認してください</div>
-          <div style="font-size:13px;color:var(--text3);line-height:1.7;font-family:'DM Sans',sans-serif;">送信されたリンクをクリックすると<br>ログインが完了します</div>
-          <button onclick="document.getElementById('_auth-sent').style.display='none';document.getElementById('_auth-form').style.display='';"
-            style="margin-top:24px;background:none;border:1px solid var(--border2);border-radius:6px;padding:8px 20px;font-size:12px;color:var(--text3);cursor:pointer;font-family:'DM Sans',sans-serif;">
-            別のアドレスで試す
-          </button>
         </div>
       </div>`;
     document.body.appendChild(modal);
@@ -129,25 +131,49 @@ function _hideLoginModal() {
   if (modal) modal.style.display = 'none';
 }
 
-async function sendAuthEmail() {
-  const input = document.getElementById('_auth-email');
-  const btn   = document.getElementById('_auth-btn');
-  const msg   = document.getElementById('_auth-msg');
-  const email = input?.value?.trim() || '';
-  if (!email || !email.includes('@')) { msg.textContent = '有効なメールアドレスを入力してください'; return; }
-  btn.disabled = true; btn.textContent = '送信中...';
+function _getAuthInputs() {
+  return {
+    email:    (document.getElementById('_auth-email')?.value || '').trim(),
+    password: (document.getElementById('_auth-password')?.value || '').trim(),
+    btn:      document.getElementById('_auth-btn'),
+    msg:      document.getElementById('_auth-msg'),
+  };
+}
+
+async function signInWithPassword() {
+  const { email, password, btn, msg } = _getAuthInputs();
+  if (!email || !email.includes('@')) { msg.textContent = 'メールアドレスを入力してください'; return; }
+  if (!password) { msg.textContent = 'パスワードを入力してください'; return; }
+  btn.disabled = true; btn.textContent = 'ログイン中...';
+  msg.textContent = '';
   try {
-    const { error } = await sbClient.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: location.origin + location.pathname }
-    });
+    const { error } = await sbClient.auth.signInWithPassword({ email, password });
     if (error) throw error;
-    document.getElementById('_auth-form').style.display = 'none';
-    document.getElementById('_auth-sent').style.display = '';
   } catch (err) {
-    const detail = err?.message || err?.error_description || JSON.stringify(err) || '不明なエラー';
-    msg.textContent = `送信に失敗しました: ${detail}`;
-    btn.disabled = false; btn.textContent = 'ログインリンクを送信';
+    const detail = err?.message || '不明なエラー';
+    msg.textContent = detail.includes('Invalid login') ? 'メールアドレスまたはパスワードが正しくありません' : `エラー: ${detail}`;
+    btn.disabled = false; btn.textContent = 'ログイン';
+  }
+}
+
+async function signUpWithPassword() {
+  const { email, password, msg } = _getAuthInputs();
+  const signupBtn = document.getElementById('_auth-signup-btn');
+  if (!email || !email.includes('@')) { msg.textContent = 'メールアドレスを入力してください'; return; }
+  if (!password || password.length < 6) { msg.textContent = 'パスワードは6文字以上で入力してください'; return; }
+  signupBtn.disabled = true; signupBtn.textContent = '登録中...';
+  msg.textContent = '';
+  try {
+    const { error } = await sbClient.auth.signUp({ email, password });
+    if (error) throw error;
+    msg.style.color = '#10b981';
+    msg.textContent = '登録が完了しました。ログインしています...';
+    // 登録直後は自動ログインされる場合がある（onAuthStateChangeが発火）
+  } catch (err) {
+    const detail = err?.message || '不明なエラー';
+    msg.style.color = '#dc2626';
+    msg.textContent = `登録エラー: ${detail}`;
+    signupBtn.disabled = false; signupBtn.textContent = '新規登録';
   }
 }
 
